@@ -8,8 +8,7 @@
     "activeTab",
     "scripting",
     "identity",
-    "bookmarks",
-    "tabGroups"
+    "bookmarks"
   ],
   "background": {
     "service_worker": "background.js"

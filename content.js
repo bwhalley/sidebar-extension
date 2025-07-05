@@ -14,6 +14,15 @@ class TabDrawer {
   }
 
   init() {
+    // Prevent running on Chrome's internal pages
+    if (window.location.protocol === 'chrome:' || 
+        window.location.protocol === 'chrome-extension:' ||
+        window.location.protocol === 'moz-extension:' ||
+        window.location.protocol === 'edge:') {
+      console.log('Skipping initialization on internal page:', window.location.href);
+      return;
+    }
+    
     // Prevent multiple initializations
     if (this.initialized) {
       return;
@@ -104,8 +113,14 @@ class TabDrawer {
 
   async loadTabs() {
     try {
+      console.log('Sending getTabs message to background script...');
       const response = await chrome.runtime.sendMessage({ action: 'getTabs' });
-      this.updateTabs(response.tabs);
+      console.log('Received response from background script:', response);
+      if (response && response.tabs) {
+        this.updateTabs(response.tabs);
+      } else {
+        console.error('Invalid response from background script:', response);
+      }
     } catch (error) {
       console.error('Failed to load tabs:', error);
       // If extension context is invalidated, try to reinitialize
@@ -120,22 +135,54 @@ class TabDrawer {
   }
 
   async loadCalendar() {
+    console.log('loadCalendar called');
     try {
-      const response = await chrome.runtime.sendMessage({ action: 'getNextMeetings' });
-      this.updateCalendar(response.meetings);
-    } catch (error) {
-      console.error('Failed to load calendar:', error);
-      // If extension context is invalidated, don't retry calendar
-      if (error.message.includes('Extension context invalidated')) {
+      console.log('About to send message to background script...');
+      
+      // Test if background script is working at all
+      try {
+        const testResponse = await chrome.runtime.sendMessage({ action: 'test' });
+        console.log('Test response:', testResponse);
+      } catch (testError) {
+        console.log('Test message failed:', testError);
+        // If background script is not responding, show error
+        this.updateCalendar({ error: 'Extension not responding. Please reload the page.' });
         return;
       }
+      
+      const response = await chrome.runtime.sendMessage({ action: 'getNextMeetings' });
+      console.log('Calendar response received:', response);
+      console.log('Response type:', typeof response);
+      if (response) {
+        console.log('Response keys:', Object.keys(response));
+        console.log('Response.meetings:', response.meetings);
+        console.log('First meeting in response:', response.meetings ? response.meetings[0] : 'No meetings');
+        this.updateCalendar(response.meetings);
+      } else {
+        console.error('No response received for calendar');
+        this.updateCalendar({ error: 'No response from background script' });
+      }
+    } catch (error) {
+      console.error('Failed to load calendar:', error);
+      // If extension context is invalidated, show error
+      if (error.message.includes('Extension context invalidated')) {
+        this.updateCalendar({ error: 'Extension context invalidated. Please reload the page.' });
+        return;
+      }
+      this.updateCalendar({ error: error.message });
     }
   }
 
   async loadBookmarks() {
     try {
+      console.log('Sending getSidebarBookmarks message to background script...');
       const response = await chrome.runtime.sendMessage({ action: 'getSidebarBookmarks' });
-      this.updateBookmarks(response.bookmarks);
+      console.log('Received bookmarks response:', response);
+      if (response && response.bookmarks) {
+        this.updateBookmarks(response.bookmarks);
+      } else {
+        console.error('Invalid bookmarks response:', response);
+      }
     } catch (error) {
       console.error('Failed to load bookmarks:', error);
       // If extension context is invalidated, don't retry bookmarks
@@ -238,8 +285,31 @@ class TabDrawer {
   }
 
   updateCalendar(meetings) {
+    console.log('updateCalendar called with:', meetings);
+    
+    // Debug: Log the structure of the first meeting
+    if (meetings && meetings.length > 0) {
+      console.log('First meeting structure:', meetings[0]);
+      console.log('First meeting keys:', Object.keys(meetings[0]));
+      if (meetings[0].conferenceData) {
+        console.log('Conference data found:', meetings[0].conferenceData);
+        if (meetings[0].conferenceData.entryPoints) {
+          console.log('Entry points:', meetings[0].conferenceData.entryPoints);
+          meetings[0].conferenceData.entryPoints.forEach((entry, index) => {
+            console.log(`Entry point ${index}:`, entry);
+          });
+        }
+      }
+      if (meetings[0].location) {
+        console.log('Location found:', meetings[0].location);
+      }
+    }
+    
     const content = document.getElementById('calendar-content');
-    if (!content) return;
+    if (!content) {
+      console.log('Calendar content element not found');
+      return;
+    }
 
     if (meetings.error) {
       content.innerHTML = `

@@ -14,6 +14,15 @@ class NewTabDrawer {
   }
 
   init() {
+    // Prevent running on Chrome's internal pages
+    if (window.location.protocol === 'chrome:' || 
+        window.location.protocol === 'chrome-extension:' ||
+        window.location.protocol === 'moz-extension:' ||
+        window.location.protocol === 'edge:') {
+      console.log('Skipping initialization on internal page:', window.location.href);
+      return;
+    }
+    
     // Prevent multiple initializations
     if (this.initialized) {
       return;
@@ -62,7 +71,7 @@ class NewTabDrawer {
     this.drawer.id = 'tab-drawer';
     this.drawer.innerHTML = `
       <div class="drawer-header">
-        <h3>Browser Tabs</h3>
+        <h3>Sidebar</h3>
         <button class="close-btn" id="drawer-close">×</button>
       </div>
       <div class="calendar-section" id="calendar-section">

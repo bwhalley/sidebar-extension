@@ -1,18 +1,32 @@
 // Background service worker for tab management and calendar integration
 
+console.log('Background script loading...');
+
 // Initialize tracking when extension starts
 chrome.runtime.onStartup.addListener(() => {
-  initializeTabGroupTracking();
+  console.log('Extension startup detected');
+  initializeTabTracking();
 });
 
 chrome.runtime.onInstalled.addListener(() => {
-  initializeTabGroupTracking();
+  console.log('Extension installed/updated');
+  initializeTabTracking();
 });
 
+// Also initialize immediately when script loads
+initializeTabTracking();
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  console.log('Background script received message:', request.action, request);
+  
   if (request.action === 'getTabs') {
-    getTabsWithGroups().then(tabs => {
+    console.log('Processing getTabs request');
+    getAllTabs().then(tabs => {
+      console.log('Sending tabs response:', { tabs: tabs });
       sendResponse({ tabs: tabs });
+    }).catch(error => {
+      console.error('Failed to get tabs:', error);
+      sendResponse({ error: error.message });
     });
     return true; // Keep the message channel open for async response
   }
@@ -32,9 +46,36 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendResponse({ success: true });
   }
   
+  if (request.action === 'test') {
+    console.log('Test message received in background script');
+    // Also test calendar functionality
+    getNextMeetings().then(testMeetings => {
+      console.log('Test calendar call result:', testMeetings);
+      sendResponse({ 
+        success: true, 
+        message: 'Background script is working',
+        calendarTest: testMeetings
+      });
+    }).catch(error => {
+      console.error('Test calendar call failed:', error);
+      sendResponse({ 
+        success: true, 
+        message: 'Background script is working but calendar failed',
+        calendarError: error.message
+      });
+    });
+    return true;
+  }
+  
   if (request.action === 'getNextMeetings') {
+    console.log('getNextMeetings message received in background script');
+    console.log('About to call getNextMeetings function...');
     getNextMeetings().then(meetings => {
+      console.log('getNextMeetings function completed, sending response:', meetings);
       sendResponse({ meetings });
+    }).catch(error => {
+      console.error('getNextMeetings function failed:', error);
+      sendResponse({ error: error.message });
     });
     return true; // Keep the message channel open for async response
   }
@@ -42,15 +83,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'getSidebarBookmarks') {
     getSidebarBookmarks().then(bookmarks => {
       sendResponse({ bookmarks });
+    }).catch(error => {
+      console.error('Failed to get bookmarks:', error);
+      sendResponse({ error: error.message });
     });
     return true; // Keep the message channel open for async response
   }
   
-
-  
   if (request.action === 'createBookmarkTab') {
     createBookmarkTab(request.url, request.title).then(() => {
       sendResponse({ success: true });
+    }).catch(error => {
+      console.error('Failed to create bookmark tab:', error);
+      sendResponse({ error: error.message });
     });
     return true;
   }
@@ -72,7 +117,7 @@ let updateTimeout = null;
 let bookmarkTabIds = new Set(); // chromeTabId -> true
 
 // Initialize our tracking system with Chrome's current state
-async function initializeTabGroupTracking() {
+async function initializeTabTracking() {
   try {
     const tabs = await chrome.tabs.query({});
     console.log('Initialized tab tracking');
@@ -87,7 +132,7 @@ function debouncedUpdateTabs() {
     clearTimeout(updateTimeout);
   }
   updateTimeout = setTimeout(async () => {
-    const tabs = await getTabsWithGroups();
+    const tabs = await getAllTabs();
     chrome.runtime.sendMessage({
       action: 'tabsUpdated',
       tabs: tabs
@@ -157,55 +202,7 @@ chrome.windows.onFocusChanged.addListener((windowId) => {
   debouncedUpdateTabs();
 });
 
-// Listen for tab group changes to sync our tracking
-chrome.tabGroups.onUpdated.addListener((group) => {
-  // Update our tracking when Chrome's group title changes
-  setGroupTitle(group.id, group.title || 'Group');
-  debouncedUpdateTabs();
-});
 
-chrome.tabGroups.onRemoved.addListener((group) => {
-  // Remove group from our tracking when Chrome removes it
-  groupTitles.delete(group.id);
-  debouncedUpdateTabs();
-});
-
-// Periodic state reconciliation to catch inconsistencies
-setInterval(async () => {
-  if (!isGroupingOperation) {
-    try {
-      await reconcileTabStates();
-    } catch (error) {
-      console.error('State reconciliation failed:', error);
-    }
-  }
-}, 5000); // Check every 5 seconds
-
-async function reconcileTabStates() {
-  try {
-    const tabs = await chrome.tabs.query({});
-    
-    for (const tab of tabs) {
-      if (bookmarkTabIds.has(tab.id)) continue; // Skip bookmark tabs
-      
-      const ourGroupId = getTabGroupId(tab.id);
-      const chromeGroupId = tab.groupId;
-      
-      // If Chrome says the tab is grouped but we don't track it
-      if (chromeGroupId !== -1 && ourGroupId === -1) {
-        console.log(`Reconciling: Tab ${tab.id} is grouped in Chrome but not in our tracking`);
-        updateTabGroupTracking(tab.id, chromeGroupId);
-      }
-      // If we track the tab as grouped but Chrome says it's not
-      else if (chromeGroupId === -1 && ourGroupId !== -1) {
-        console.log(`Reconciling: Tab ${tab.id} is tracked as grouped but not in Chrome`);
-        updateTabGroupTracking(tab.id, -1);
-      }
-    }
-  } catch (error) {
-    console.error('Failed to reconcile tab states:', error);
-  }
-}
 
 // Google Calendar integration
 let authToken = null;
@@ -232,11 +229,14 @@ async function getAuthToken() {
 
 // Get next 2 meetings from Google Calendar
 async function getNextMeetings() {
+  console.log('getNextMeetings called');
   try {
     const token = authToken || await getAuthToken();
     if (!token) {
+      console.log('No auth token available');
       return { error: 'Authentication failed' };
     }
+    console.log('Auth token obtained');
 
     const now = new Date();
     const endOfDay = new Date(now);
@@ -262,7 +262,9 @@ async function getNextMeetings() {
     }
 
     const data = await response.json();
+    console.log('Calendar API response:', data);
     const allEvents = data.items || [];
+    console.log('All events found:', allEvents.length);
     
     // Filter events to only show meetings with multiple attendees
     const meetings = allEvents.filter(event => {
@@ -289,8 +291,11 @@ async function getNextMeetings() {
       return event.attendees.length >= 2;
     });
     
+    console.log('Filtered meetings:', meetings.length);
     // Process meetings to extract meeting URLs and platform info
+    console.log('Processing meetings for URL extraction...');
     const processedMeetings = meetings.slice(0, 2).map(meeting => {
+      console.log('Processing meeting:', meeting.summary);
       const meetingInfo = { ...meeting };
       
       // Extract meeting URL from conferenceData field (primary source)
@@ -330,6 +335,7 @@ async function getNextMeetings() {
       return meetingInfo;
     });
     
+    console.log('Final processed meetings:', processedMeetings);
     return processedMeetings;
   } catch (error) {
     console.error('Failed to fetch calendar events:', error);
@@ -348,55 +354,58 @@ function extractMeetingUrl(location) {
     {
       name: 'Zoom',
       patterns: [
-        /https?:\/\/(?:www\.)?zoom\.us\/j\/\d+(?:\?[^\s]*)?/i,
-        /https?:\/\/(?:www\.)?zoom\.us\/my\/[^\/\s]+(?:\?[^\s]*)?/i,
-        /https?:\/\/(?:www\.)?zoom\.us\/meeting\/[^\/\s]+(?:\?[^\s]*)?/i
+        /https?:\/\/(?:www\.)?zoom\.us\/j\/\d+/i,
+        /https?:\/\/(?:www\.)?zoom\.us\/my\/[^\/\s]+/i,
+        /https?:\/\/(?:www\.)?zoom\.us\/meeting\/[^\/\s]+/i,
+        /https?:\/\/(?:www\.)?[a-zA-Z0-9.-]*zoom\.us\/j\/\d+/i,
+        /https?:\/\/(?:www\.)?[a-zA-Z0-9.-]*zoom\.us\/my\/[^\/\s]+/i,
+        /https?:\/\/(?:www\.)?[a-zA-Z0-9.-]*zoom\.us\/meeting\/[^\/\s]+/i
       ],
       icon: '🔵'
     },
     {
       name: 'Google Meet',
       patterns: [
-        /https?:\/\/meet\.google\.com\/[a-z-]+(?:\?[^\s]*)?/i,
-        /https?:\/\/hangouts\.google\.com\/[a-z-]+(?:\?[^\s]*)?/i
+        /https?:\/\/meet\.google\.com\/[a-z-]+/i,
+        /https?:\/\/hangouts\.google\.com\/[a-z-]+/i
       ],
       icon: '🟢'
     },
     {
       name: 'Microsoft Teams',
       patterns: [
-        /https?:\/\/teams\.microsoft\.com\/l\/meetup-join\/[^\/\s]+(?:\?[^\s]*)?/i,
-        /https?:\/\/teams\.live\.com\/meet\/[^\/\s]+(?:\?[^\s]*)?/i
+        /https?:\/\/teams\.microsoft\.com\/l\/meetup-join\/[^\/\s]+/i,
+        /https?:\/\/teams\.live\.com\/meet\/[^\/\s]+/i
       ],
       icon: '🔷'
     },
     {
       name: 'Webex',
       patterns: [
-        /https?:\/\/(?:www\.)?webex\.com\/meet\/[^\/\s]+(?:\?[^\s]*)?/i,
-        /https?:\/\/(?:www\.)?webex\.com\/webex\/[^\/\s]+(?:\?[^\s]*)?/i
+        /https?:\/\/(?:www\.)?webex\.com\/meet\/[^\/\s]+/i,
+        /https?:\/\/(?:www\.)?webex\.com\/webex\/[^\/\s]+/i
       ],
       icon: '🟠'
     },
     {
       name: 'Discord',
       patterns: [
-        /https?:\/\/discord\.gg\/[^\/\s]+(?:\?[^\s]*)?/i,
-        /https?:\/\/discord\.com\/invite\/[^\/\s]+(?:\?[^\s]*)?/i
+        /https?:\/\/discord\.gg\/[^\/\s]+/i,
+        /https?:\/\/discord\.com\/invite\/[^\/\s]+/i
       ],
       icon: '🟣'
     },
     {
       name: 'Slack',
       patterns: [
-        /https?:\/\/[^\/]+\.slack\.com\/archives\/[^\/\s]+(?:\?[^\s]*)?/i
+        /https?:\/\/[^\/]+\.slack\.com\/archives\/[^\/\s]+/i
       ],
       icon: '🟡'
     },
     {
       name: 'Skype',
       patterns: [
-        /https?:\/\/join\.skype\.com\/[^\/\s]+(?:\?[^\s]*)?/i,
+        /https?:\/\/join\.skype\.com\/[^\/\s]+/i,
         /skype:[^\/\s]+\?chat/i
       ],
       icon: '🔵'
@@ -404,14 +413,14 @@ function extractMeetingUrl(location) {
     {
       name: 'BlueJeans',
       patterns: [
-        /https?:\/\/(?:www\.)?bluejeans\.com\/[^\/\s]+(?:\?[^\s]*)?/i
+        /https?:\/\/(?:www\.)?bluejeans\.com\/[^\/\s]+/i
       ],
       icon: '🔵'
     },
     {
       name: 'GoToMeeting',
       patterns: [
-        /https?:\/\/global\.gotomeeting\.com\/join\/[^\/\s]+(?:\?[^\s]*)?/i
+        /https?:\/\/global\.gotomeeting\.com\/join\/[^\/\s]+/i
       ],
       icon: '🟢'
     }
@@ -433,7 +442,7 @@ function extractMeetingUrl(location) {
   }
   
   // If no specific platform found, check for any meeting-like URL
-  const genericMeetingPattern = /https?:\/\/(?:meet|zoom|teams|webex|bluejeans|gotomeeting|hangouts|discord|slack|skype)\.[^\/\s]+[^\s]*/i;
+  const genericMeetingPattern = /https?:\/\/(?:meet|zoom|teams|webex|bluejeans|gotomeeting|hangouts|discord|slack|skype)\.[^\/\s]+/i;
   const genericMatch = location.match(genericMeetingPattern);
   if (genericMatch) {
     console.log('Found generic meeting URL:', genericMatch[0]);
@@ -448,27 +457,18 @@ function extractMeetingUrl(location) {
   return null;
 }
 
-// Get tabs in a specific group
 
-
-// Get bookmark tabs (for potential future use)
-async function getBookmarkTabs() {
-  try {
-    const tabs = await chrome.tabs.query({});
-    return tabs.filter(tab => bookmarkTabIds.has(tab.id));
-  } catch (error) {
-    console.error('Failed to get bookmark tabs:', error);
-    return [];
-  }
-}
 
 // Get all tabs
-async function getTabsWithGroups() {
+async function getAllTabs() {
   try {
+    console.log('getAllTabs called');
     const tabs = await chrome.tabs.query({});
+    console.log('Raw tabs from chrome.tabs.query:', tabs);
     
     // Filter out bookmark tabs
     const filteredTabs = tabs.filter(tab => !bookmarkTabIds.has(tab.id));
+    console.log('Filtered tabs:', filteredTabs);
     
     return filteredTabs;
   } catch (error) {
