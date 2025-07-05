@@ -368,6 +368,9 @@ class NewTabDrawer {
     const duration = Math.round((endTime - startTime) / (1000 * 60)); // minutes
     const attendeeCount = meeting.attendees ? meeting.attendees.length : 0;
     
+    // Check if meeting has a platform URL
+    const hasMeetingUrl = meeting.meetingUrl && meeting.platform;
+    
     meetingDiv.innerHTML = `
       <div class="meeting-content">
         <div class="meeting-time">${timeString}</div>
@@ -375,15 +378,35 @@ class NewTabDrawer {
           <div class="meeting-title" title="${meeting.summary}">${this.truncateTitle(meeting.summary)}</div>
           <div class="meeting-duration">${duration} min • ${attendeeCount} people</div>
         </div>
+        ${hasMeetingUrl ? `<div class="meeting-platform" title="Join ${meeting.platform} meeting">${meeting.platformIcon}</div>` : ''}
       </div>
     `;
     
-    // Add click handler to open meeting in Google Calendar
-    meetingDiv.addEventListener('click', () => {
-      if (meeting.htmlLink) {
-        window.open(meeting.htmlLink, '_blank');
-      }
-    });
+    // Add click handlers
+    if (hasMeetingUrl) {
+      // If there's a meeting URL, clicking the platform icon opens the meeting
+      const platformIcon = meetingDiv.querySelector('.meeting-platform');
+      platformIcon.addEventListener('click', (e) => {
+        e.stopPropagation();
+        window.open(meeting.meetingUrl, '_blank');
+      });
+      
+      // Clicking the rest of the meeting opens Google Calendar
+      meetingDiv.addEventListener('click', (e) => {
+        if (!e.target.classList.contains('meeting-platform')) {
+          if (meeting.htmlLink) {
+            window.open(meeting.htmlLink, '_blank');
+          }
+        }
+      });
+    } else {
+      // If no meeting URL, clicking anywhere opens Google Calendar
+      meetingDiv.addEventListener('click', () => {
+        if (meeting.htmlLink) {
+          window.open(meeting.htmlLink, '_blank');
+        }
+      });
+    }
     
     return meetingDiv;
   }

@@ -288,12 +288,129 @@ async function getNextMeetings() {
       return event.attendees.length >= 2;
     });
     
-    // Return only the first 2 meetings that pass the filter
-    return meetings.slice(0, 2);
+    // Process meetings to extract meeting URLs and platform info
+    const processedMeetings = meetings.slice(0, 2).map(meeting => {
+      const meetingInfo = { ...meeting };
+      
+      // Extract meeting URL from location field
+      if (meeting.location) {
+        const meetingUrl = extractMeetingUrl(meeting.location);
+        if (meetingUrl) {
+          meetingInfo.meetingUrl = meetingUrl.url;
+          meetingInfo.platform = meetingUrl.platform;
+          meetingInfo.platformIcon = meetingUrl.icon;
+        }
+      }
+      
+      return meetingInfo;
+    });
+    
+    return processedMeetings;
   } catch (error) {
     console.error('Failed to fetch calendar events:', error);
     return { error: error.message };
   }
+}
+
+// Extract meeting URL and platform info from location field
+function extractMeetingUrl(location) {
+  if (!location) return null;
+  
+  // Common meeting platform patterns
+  const patterns = [
+    {
+      name: 'Zoom',
+      patterns: [
+        /https?:\/\/(?:www\.)?zoom\.us\/j\/(\d+)/i,
+        /https?:\/\/(?:www\.)?zoom\.us\/my\/([^\/\s]+)/i,
+        /https?:\/\/(?:www\.)?zoom\.us\/meeting\/([^\/\s]+)/i
+      ],
+      icon: '🔵'
+    },
+    {
+      name: 'Google Meet',
+      patterns: [
+        /https?:\/\/meet\.google\.com\/([a-z-]+)/i,
+        /https?:\/\/hangouts\.google\.com\/([a-z-]+)/i
+      ],
+      icon: '🟢'
+    },
+    {
+      name: 'Microsoft Teams',
+      patterns: [
+        /https?:\/\/teams\.microsoft\.com\/l\/meetup-join\/([^\/\s]+)/i,
+        /https?:\/\/teams\.live\.com\/meet\/([^\/\s]+)/i
+      ],
+      icon: '🔷'
+    },
+    {
+      name: 'Webex',
+      patterns: [
+        /https?:\/\/(?:www\.)?webex\.com\/meet\/([^\/\s]+)/i,
+        /https?:\/\/(?:www\.)?webex\.com\/webex\/([^\/\s]+)/i
+      ],
+      icon: '🟠'
+    },
+    {
+      name: 'Discord',
+      patterns: [
+        /https?:\/\/discord\.gg\/([^\/\s]+)/i,
+        /https?:\/\/discord\.com\/invite\/([^\/\s]+)/i
+      ],
+      icon: '🟣'
+    },
+    {
+      name: 'Slack',
+      patterns: [
+        /https?:\/\/[^\/]+\.slack\.com\/archives\/([^\/\s]+)/i
+      ],
+      icon: '🟡'
+    },
+    {
+      name: 'Skype',
+      patterns: [
+        /https?:\/\/join\.skype\.com\/([^\/\s]+)/i,
+        /skype:([^\/\s]+)\?chat/i
+      ],
+      icon: '🔵'
+    },
+    {
+      name: 'BlueJeans',
+      patterns: [
+        /https?:\/\/(?:www\.)?bluejeans\.com\/([^\/\s]+)/i
+      ],
+      icon: '🔵'
+    },
+    {
+      name: 'GoToMeeting',
+      patterns: [
+        /https?:\/\/global\.gotomeeting\.com\/join\/([^\/\s]+)/i
+      ],
+      icon: '🟢'
+    },
+    {
+      name: 'Generic Meeting',
+      patterns: [
+        /https?:\/\/[^\/\s]+/i
+      ],
+      icon: '📹'
+    }
+  ];
+  
+  for (const platform of patterns) {
+    for (const pattern of platform.patterns) {
+      const match = location.match(pattern);
+      if (match) {
+        return {
+          url: match[0],
+          platform: platform.name,
+          icon: platform.icon
+        };
+      }
+    }
+  }
+  
+  return null;
 }
 
 // Get tabs in a specific group

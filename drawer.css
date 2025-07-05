@@ -167,6 +167,57 @@ body.drawer-collapsed {
   color: rgba(255, 255, 255, 0.7);
 }
 
+/* Meeting Platform Icon */
+.meeting-platform {
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  background: rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+}
+
+.meeting-platform:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: scale(1.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Platform-specific colors */
+.meeting-platform[title*="Zoom"]:hover {
+  background: rgba(0, 122, 255, 0.3);
+}
+
+.meeting-platform[title*="Google Meet"]:hover {
+  background: rgba(0, 150, 136, 0.3);
+}
+
+.meeting-platform[title*="Microsoft Teams"]:hover {
+  background: rgba(0, 120, 215, 0.3);
+}
+
+.meeting-platform[title*="Webex"]:hover {
+  background: rgba(255, 102, 0, 0.3);
+}
+
+.meeting-platform[title*="Discord"]:hover {
+  background: rgba(114, 137, 218, 0.3);
+}
+
+.meeting-platform[title*="Slack"]:hover {
+  background: rgba(74, 21, 75, 0.3);
+}
+
+.meeting-platform[title*="Skype"]:hover {
+  background: rgba(0, 175, 240, 0.3);
+}
+
 /* Calendar States */
 .calendar-error {
   text-align: center;
