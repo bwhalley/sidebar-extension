@@ -1,15 +1,11 @@
 // Background service worker for tab management and calendar integration
 
-console.log('Background script loading...');
-
 // Initialize tracking when extension starts
 chrome.runtime.onStartup.addListener(() => {
-  console.log('Extension startup detected');
   initializeTabTracking();
 });
 
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('Extension installed/updated');
   initializeTabTracking();
 });
 
@@ -17,15 +13,10 @@ chrome.runtime.onInstalled.addListener(() => {
 initializeTabTracking();
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  console.log('Background script received message:', request.action, request);
-  
   if (request.action === 'getTabs') {
-    console.log('Processing getTabs request');
     getAllTabs().then(tabs => {
-      console.log('Sending tabs response:', { tabs: tabs });
       sendResponse({ tabs: tabs });
     }).catch(error => {
-      console.error('Failed to get tabs:', error);
       sendResponse({ error: error.message });
     });
     return true; // Keep the message channel open for async response
@@ -47,17 +38,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
   
   if (request.action === 'test') {
-    console.log('Test message received in background script');
-    // Also test calendar functionality
     getNextMeetings().then(testMeetings => {
-      console.log('Test calendar call result:', testMeetings);
       sendResponse({ 
         success: true, 
         message: 'Background script is working',
         calendarTest: testMeetings
       });
     }).catch(error => {
-      console.error('Test calendar call failed:', error);
       sendResponse({ 
         success: true, 
         message: 'Background script is working but calendar failed',
@@ -68,13 +55,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
   
   if (request.action === 'getNextMeetings') {
-    console.log('getNextMeetings message received in background script');
-    console.log('About to call getNextMeetings function...');
     getNextMeetings().then(meetings => {
-      console.log('getNextMeetings function completed, sending response:', meetings);
       sendResponse({ meetings });
     }).catch(error => {
-      console.error('getNextMeetings function failed:', error);
       sendResponse({ error: error.message });
     });
     return true; // Keep the message channel open for async response
@@ -84,7 +67,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     getSidebarBookmarks().then(bookmarks => {
       sendResponse({ bookmarks });
     }).catch(error => {
-      console.error('Failed to get bookmarks:', error);
       sendResponse({ error: error.message });
     });
     return true; // Keep the message channel open for async response
@@ -94,7 +76,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     createBookmarkTab(request.url, request.title).then(() => {
       sendResponse({ success: true });
     }).catch(error => {
-      console.error('Failed to create bookmark tab:', error);
       sendResponse({ error: error.message });
     });
     return true;
@@ -120,9 +101,7 @@ let bookmarkTabIds = new Set(); // chromeTabId -> true
 async function initializeTabTracking() {
   try {
     const tabs = await chrome.tabs.query({});
-    console.log('Initialized tab tracking');
   } catch (error) {
-    console.error('Failed to initialize tab tracking:', error);
   }
 }
 
@@ -222,7 +201,6 @@ async function getAuthToken(interactive = false) {
     authToken = token;
     return token;
   } catch (error) {
-    console.error('Failed to get auth token:', error);
     return null;
   }
 }
@@ -238,17 +216,14 @@ function removeCachedToken(token) {
 
 // Get next 2 meetings from Google Calendar, with token refresh on 401
 async function getNextMeetings() {
-  console.log('getNextMeetings called');
   let token = authToken || await getAuthToken(false); // Try silent first
   if (!token) {
     // Try interactive if silent failed
     token = await getAuthToken(true);
     if (!token) {
-      console.log('No auth token available');
       return { error: 'Authentication failed' };
     }
   }
-  console.log('Auth token obtained');
 
   const now = new Date();
   const endOfDay = new Date(now);
@@ -271,7 +246,6 @@ async function getNextMeetings() {
 
   // If unauthorized, remove cached token and retry once
   if (response.status === 401) {
-    console.warn('Received 401, removing cached token and retrying...');
     await removeCachedToken(token);
     token = await getAuthToken(false); // Try silent refresh
     if (!token) {
@@ -293,9 +267,7 @@ async function getNextMeetings() {
   }
 
   const data = await response.json();
-  console.log('Calendar API response:', data);
   const allEvents = data.items || [];
-  console.log('All events found:', allEvents.length);
   
   // Filter events to only show meetings with multiple attendees
   const meetings = allEvents.filter(event => {
@@ -322,59 +294,45 @@ async function getNextMeetings() {
     return event.attendees.length >= 2;
   });
   
-  console.log('Filtered meetings:', meetings.length);
   // Process meetings to extract meeting URLs and platform info
-  console.log('Processing meetings for URL extraction...');
   const processedMeetings = meetings.slice(0, 2).map(meeting => {
-    console.log('Processing meeting:', meeting.summary);
     const meetingInfo = { ...meeting };
     
     // Extract meeting URL from conferenceData field (primary source)
     if (meeting.conferenceData && meeting.conferenceData.entryPoints) {
-      console.log('Conference data found:', meeting.conferenceData);
       const videoEntryPoint = meeting.conferenceData.entryPoints.find(entry => 
         entry.entryPointType === 'video'
       );
       
       if (videoEntryPoint && videoEntryPoint.uri) {
-        console.log('Video entry point found:', videoEntryPoint);
-        console.log('Video entry point URI:', videoEntryPoint.uri);
         const meetingUrl = extractMeetingUrl(videoEntryPoint.uri);
         if (meetingUrl) {
           meetingInfo.meetingUrl = meetingUrl.url;
           meetingInfo.platform = meetingUrl.platform;
           meetingInfo.platformIcon = meetingUrl.icon;
-          console.log('Meeting URL extracted:', meetingUrl);
-          console.log('Final meeting URL to be used:', meetingInfo.meetingUrl);
         }
       }
     }
     
     // Fallback: Extract meeting URL from location field if no conferenceData
     if (!meetingInfo.meetingUrl && meeting.location) {
-      console.log('No conferenceData, trying location field:', meeting.location);
       const meetingUrl = extractMeetingUrl(meeting.location);
       if (meetingUrl) {
         meetingInfo.meetingUrl = meetingUrl.url;
         meetingInfo.platform = meetingUrl.platform;
         meetingInfo.platformIcon = meetingUrl.icon;
-        console.log('Meeting URL extracted from location:', meetingUrl);
-        console.log('Final meeting URL to be used:', meetingInfo.meetingUrl);
       }
     }
     
     return meetingInfo;
   });
   
-  console.log('Final processed meetings:', processedMeetings);
   return processedMeetings;
 }
 
 // Extract meeting URL and platform info from location field
 function extractMeetingUrl(location) {
   if (!location) return null;
-  
-  console.log('Extracting meeting URL from:', location);
   
   // Common meeting platform patterns - match the full URL
   const patterns = [
@@ -458,7 +416,6 @@ function extractMeetingUrl(location) {
     for (const pattern of platform.patterns) {
       const match = location.match(pattern);
       if (match) {
-        console.log(`Found ${platform.name} meeting URL:`, match[0]);
         return {
           url: match[0],
           platform: platform.name,
@@ -472,7 +429,6 @@ function extractMeetingUrl(location) {
   const genericMeetingPattern = /https?:\/\/(?:meet|zoom|teams|webex|bluejeans|gotomeeting|hangouts|discord|slack|skype)\.[^\/\s]+/i;
   const genericMatch = location.match(genericMeetingPattern);
   if (genericMatch) {
-    console.log('Found generic meeting URL:', genericMatch[0]);
     return {
       url: genericMatch[0],
       platform: 'Meeting',
@@ -480,7 +436,6 @@ function extractMeetingUrl(location) {
     };
   }
   
-  console.log('No meeting URL found in location');
   return null;
 }
 
@@ -489,17 +444,13 @@ function extractMeetingUrl(location) {
 // Get all tabs
 async function getAllTabs() {
   try {
-    console.log('getAllTabs called');
     const tabs = await chrome.tabs.query({});
-    console.log('Raw tabs from chrome.tabs.query:', tabs);
     
     // Filter out bookmark tabs
     const filteredTabs = tabs.filter(tab => !bookmarkTabIds.has(tab.id));
-    console.log('Filtered tabs:', filteredTabs);
     
     return filteredTabs;
   } catch (error) {
-    console.error('Failed to get tabs:', error);
     return [];
   }
 }
@@ -554,7 +505,6 @@ async function getSidebarBookmarks() {
     
     return sidebarBookmarks;
   } catch (error) {
-    console.error('Failed to fetch bookmarks:', error);
     return { error: error.message };
   }
 }
@@ -576,25 +526,19 @@ async function createBookmarkTab(url, title) {
     // Mark it as a bookmark tab so it won't appear in our main tab list
     bookmarkTabIds.add(tab.id);
     
-    console.log(`Created bookmark tab: ${title} (${tab.id})`);
     return tab;
   } catch (error) {
-    console.error('Failed to create bookmark tab:', error);
     throw error;
   }
 }
 
 async function moveTab(tabId, targetIndex) {
   try {
-    console.log(`Moving tab ${tabId} to index ${targetIndex}`);
-    
     // Get current tab info to validate
     const tab = await chrome.tabs.get(tabId);
-    console.log(`Current tab index: ${tab.index}, target index: ${targetIndex}`);
     
     // Safety check: don't move if already at target position
     if (tab.index === targetIndex) {
-      console.log(`Tab ${tabId} already at target index ${targetIndex}`);
       return;
     }
     
@@ -606,13 +550,10 @@ async function moveTab(tabId, targetIndex) {
     const clampedIndex = Math.max(0, Math.min(targetIndex, maxIndex));
     
     if (clampedIndex !== targetIndex) {
-      console.log(`Adjusted target index from ${targetIndex} to ${clampedIndex} (bounds: 0-${maxIndex})`);
     }
     
     await chrome.tabs.move(tabId, { index: clampedIndex });
-    console.log(`Successfully moved tab ${tabId} to index ${clampedIndex}`);
   } catch (error) {
-    console.error('Failed to move tab:', error);
     throw error;
   }
 }

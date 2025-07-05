@@ -21,7 +21,6 @@ class TabDrawer {
         window.location.protocol === 'chrome-extension:' ||
         window.location.protocol === 'moz-extension:' ||
         window.location.protocol === 'edge:') {
-      console.log('Skipping initialization on internal page:', window.location.href);
       return;
     }
     
@@ -136,7 +135,7 @@ class TabDrawer {
 .tab-item {
   background: rgba(255,255,255,0.1);
   border-radius: 6px;
-  margin: 6px;
+  margin: 2px 0;
   cursor: pointer;
   transition: all 0.2s ease;
   border: 1px solid rgba(255,255,255,0.1);
@@ -174,7 +173,13 @@ class TabDrawer {
 }
 .tab-item:hover { background: rgba(255,255,255,0.2); transform: translateX(5px); }
 .tab-item.active { background: rgba(255,255,255,0.25); border-color: rgba(255,255,255,0.4); box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
-.tab-content { padding: 12px; display: flex; align-items: center; gap: 10px; position: relative; }
+.tab-content {
+  padding: 6px 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  position: relative;
+}
 .tab-favicon { width: 16px; height: 16px; border-radius: 2px; flex-shrink: 0; background: rgba(255,255,255,0.2); }
 .tab-info { flex: 1; min-width: 0; overflow: hidden; }
 .tab-title { font-size: 14px; font-weight: 500; color: white; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -365,9 +370,7 @@ class TabDrawer {
 
   async loadTabs() {
     try {
-      console.log('Sending getTabs message to background script...');
       const response = await chrome.runtime.sendMessage({ action: 'getTabs' });
-      console.log('Received response from background script:', response);
       if (response && response.tabs) {
         this.updateTabs(response.tabs);
       } else {
@@ -377,9 +380,8 @@ class TabDrawer {
       console.error('Failed to load tabs:', error);
       // If extension context is invalidated, try to reinitialize
       if (error.message.includes('Extension context invalidated')) {
-        console.log('Extension context invalidated, attempting to reinitialize...');
-        this.cleanup();
         setTimeout(() => {
+          this.cleanup();
           this.init();
         }, 1000);
       }
@@ -387,35 +389,23 @@ class TabDrawer {
   }
 
   async loadCalendar() {
-    console.log('loadCalendar called');
     try {
-      console.log('About to send message to background script...');
-      
       // Test if background script is working at all
       try {
         const testResponse = await chrome.runtime.sendMessage({ action: 'test' });
-        console.log('Test response:', testResponse);
       } catch (testError) {
-        console.log('Test message failed:', testError);
-        // If background script is not responding, show error
         this.updateCalendar({ error: 'Extension not responding. Please reload the page.' });
         return;
       }
       
       const response = await chrome.runtime.sendMessage({ action: 'getNextMeetings' });
-      console.log('Calendar response received:', response);
-      console.log('Response type:', typeof response);
       if (response) {
-        console.log('Response keys:', Object.keys(response));
-        console.log('Response.meetings:', response.meetings);
-        console.log('First meeting in response:', response.meetings ? response.meetings[0] : 'No meetings');
         this.updateCalendar(response.meetings);
       } else {
         console.error('No response received for calendar');
         this.updateCalendar({ error: 'No response from background script' });
       }
     } catch (error) {
-      console.error('Failed to load calendar:', error);
       // If extension context is invalidated, show error
       if (error.message.includes('Extension context invalidated')) {
         this.updateCalendar({ error: 'Extension context invalidated. Please reload the page.' });
@@ -427,16 +417,13 @@ class TabDrawer {
 
   async loadBookmarks() {
     try {
-      console.log('Sending getSidebarBookmarks message to background script...');
       const response = await chrome.runtime.sendMessage({ action: 'getSidebarBookmarks' });
-      console.log('Received bookmarks response:', response);
       if (response && response.bookmarks) {
         this.updateBookmarks(response.bookmarks);
       } else {
         console.error('Invalid bookmarks response:', response);
       }
     } catch (error) {
-      console.error('Failed to load bookmarks:', error);
       // If extension context is invalidated, don't retry bookmarks
       if (error.message.includes('Extension context invalidated')) {
         return;
@@ -535,29 +522,8 @@ class TabDrawer {
   }
 
   updateCalendar(meetings) {
-    console.log('updateCalendar called with:', meetings);
-    
-    // Debug: Log the structure of the first meeting
-    if (meetings && meetings.length > 0) {
-      console.log('First meeting structure:', meetings[0]);
-      console.log('First meeting keys:', Object.keys(meetings[0]));
-      if (meetings[0].conferenceData) {
-        console.log('Conference data found:', meetings[0].conferenceData);
-        if (meetings[0].conferenceData.entryPoints) {
-          console.log('Entry points:', meetings[0].conferenceData.entryPoints);
-          meetings[0].conferenceData.entryPoints.forEach((entry, index) => {
-            console.log(`Entry point ${index}:`, entry);
-          });
-        }
-      }
-      if (meetings[0].location) {
-        console.log('Location found:', meetings[0].location);
-      }
-    }
-    
     const content = this.shadow.getElementById('calendar-content');
     if (!content) {
-      console.log('Calendar content element not found');
       return;
     }
 
@@ -794,9 +760,8 @@ class TabDrawer {
       console.error('Failed to switch tab:', error);
       // If extension context is invalidated, try to reinitialize
       if (error.message.includes('Extension context invalidated')) {
-        console.log('Extension context invalidated, attempting to reinitialize...');
-        this.cleanup();
         setTimeout(() => {
+          this.cleanup();
           this.init();
         }, 1000);
       }
@@ -810,9 +775,8 @@ class TabDrawer {
       console.error('Failed to close tab:', error);
       // If extension context is invalidated, try to reinitialize
       if (error.message.includes('Extension context invalidated')) {
-        console.log('Extension context invalidated, attempting to reinitialize...');
-        this.cleanup();
         setTimeout(() => {
+          this.cleanup();
           this.init();
         }, 1000);
       }
@@ -826,9 +790,8 @@ class TabDrawer {
       console.error('Failed to refresh tab:', error);
       // If extension context is invalidated, try to reinitialize
       if (error.message.includes('Extension context invalidated')) {
-        console.log('Extension context invalidated, attempting to reinitialize...');
-        this.cleanup();
         setTimeout(() => {
+          this.cleanup();
           this.init();
         }, 1000);
       }
@@ -894,16 +857,12 @@ class TabDrawer {
       const draggedTabId = parseInt(e.dataTransfer.getData('text/plain'));
       const targetTabId = tab.id;
       
-      console.log(`Drop event: dragged=${draggedTabId}, target=${targetTabId}`);
-      
       if (draggedTabId && targetTabId && draggedTabId !== targetTabId) {
         // Determine insertion position based on mouse position
         const rect = tabElement.getBoundingClientRect();
         const mouseY = e.clientY;
         const tabCenter = rect.top + rect.height / 2;
         const insertBefore = mouseY < tabCenter;
-        
-        console.log(`Mouse position: ${mouseY}, tab center: ${tabCenter}, insertBefore: ${insertBefore}`);
         
         await this.handleTabDrop(draggedTabId, targetTabId, insertBefore);
       } else {
@@ -914,8 +873,6 @@ class TabDrawer {
 
   async handleTabDrop(draggedTabId, targetTabId, insertBefore) {
     try {
-      console.log(`Handling tab drop: ${draggedTabId} -> ${targetTabId}, insertBefore: ${insertBefore}`);
-      
       // Get all tabs to find the target index
       const response = await chrome.runtime.sendMessage({ action: 'getTabs' });
       const tabs = response.tabs;
@@ -950,8 +907,6 @@ class TabDrawer {
       
       // Ensure target index is within bounds
       targetIndex = Math.max(0, Math.min(targetIndex, tabs.length));
-      
-      console.log(`Moving tab ${draggedTabId} from index ${draggedTab.index} to index ${targetIndex}`);
       
       // Move the dragged tab to the target position
       const moveResponse = await chrome.runtime.sendMessage({
