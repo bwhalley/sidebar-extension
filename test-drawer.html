@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tab Drawer Test Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        .test-content {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        .test-button:hover {
+            background: #0056b3;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-content">
+        <h1>Tab Drawer Test Page</h1>
+        <p>This page is designed to test the Tab Drawer Chrome extension. You should see a drawer on the left side that pushes the page content to the right.</p>
+        
+        <div id="status"></div>
+        
+        <h3>Test Actions:</h3>
+        <button class="test-button" onclick="openNewTab()">Open New Tab</button>
+        <button class="test-button" onclick="checkDrawer()">Check Drawer Status</button>
+        <button class="test-button" onclick="reloadPage()">Reload Page</button>
+        
+        <h3>Expected Behavior:</h3>
+        <ul>
+            <li>✅ Drawer appears on the left side, pushing content to the right</li>
+            <li>✅ Drawer shows all open tabs with favicons</li>
+            <li>✅ Clicking tabs switches to them</li>
+            <li>✅ Drawer can be resized by dragging the right edge</li>
+            <li>✅ Drawer can be collapsed with the × button</li>
+            <li>✅ Drawer appears on new tabs automatically</li>
+        </ul>
+        
+        <h3>Test Scenarios:</h3>
+        <ol>
+            <li>Open this page in a new tab - drawer should appear</li>
+            <li>Open multiple tabs - all should show in the drawer</li>
+            <li>Switch between tabs using the drawer</li>
+            <li>Close tabs using the × button in the drawer</li>
+            <li>Resize the drawer by dragging the right edge</li>
+            <li>Collapse and expand the drawer</li>
+        </ol>
+    </div>
+
+    <script>
+        function openNewTab() {
+            window.open('https://www.google.com', '_blank');
+        }
+        
+        function checkDrawer() {
+            const drawer = document.getElementById('tab-drawer');
+            const status = document.getElementById('status');
+            
+            if (drawer) {
+                status.innerHTML = '<div class="status success">✅ Drawer is present and working!</div>';
+            } else {
+                status.innerHTML = '<div class="status error">❌ Drawer not found. Check if extension is loaded.</div>';
+            }
+        }
+        
+        function reloadPage() {
+            location.reload();
+        }
+        
+        // Auto-check drawer status after page loads
+        setTimeout(checkDrawer, 1000);
+    </script>
+</body>
+</html> 
