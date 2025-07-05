@@ -302,23 +302,28 @@ async function getNextMeetings() {
         
         if (videoEntryPoint && videoEntryPoint.uri) {
           console.log('Video entry point found:', videoEntryPoint);
+          console.log('Video entry point URI:', videoEntryPoint.uri);
           const meetingUrl = extractMeetingUrl(videoEntryPoint.uri);
           if (meetingUrl) {
             meetingInfo.meetingUrl = meetingUrl.url;
             meetingInfo.platform = meetingUrl.platform;
             meetingInfo.platformIcon = meetingUrl.icon;
             console.log('Meeting URL extracted:', meetingUrl);
+            console.log('Final meeting URL to be used:', meetingInfo.meetingUrl);
           }
         }
       }
       
       // Fallback: Extract meeting URL from location field if no conferenceData
       if (!meetingInfo.meetingUrl && meeting.location) {
+        console.log('No conferenceData, trying location field:', meeting.location);
         const meetingUrl = extractMeetingUrl(meeting.location);
         if (meetingUrl) {
           meetingInfo.meetingUrl = meetingUrl.url;
           meetingInfo.platform = meetingUrl.platform;
           meetingInfo.platformIcon = meetingUrl.icon;
+          console.log('Meeting URL extracted from location:', meetingUrl);
+          console.log('Final meeting URL to be used:', meetingInfo.meetingUrl);
         }
       }
       
@@ -336,91 +341,88 @@ async function getNextMeetings() {
 function extractMeetingUrl(location) {
   if (!location) return null;
   
-  // Common meeting platform patterns
+  console.log('Extracting meeting URL from:', location);
+  
+  // Common meeting platform patterns - match the full URL
   const patterns = [
     {
       name: 'Zoom',
       patterns: [
-        /https?:\/\/(?:www\.)?zoom\.us\/j\/(\d+)/i,
-        /https?:\/\/(?:www\.)?zoom\.us\/my\/([^\/\s]+)/i,
-        /https?:\/\/(?:www\.)?zoom\.us\/meeting\/([^\/\s]+)/i
+        /https?:\/\/(?:www\.)?zoom\.us\/j\/\d+(?:\?[^\s]*)?/i,
+        /https?:\/\/(?:www\.)?zoom\.us\/my\/[^\/\s]+(?:\?[^\s]*)?/i,
+        /https?:\/\/(?:www\.)?zoom\.us\/meeting\/[^\/\s]+(?:\?[^\s]*)?/i
       ],
       icon: '🔵'
     },
     {
       name: 'Google Meet',
       patterns: [
-        /https?:\/\/meet\.google\.com\/([a-z-]+)/i,
-        /https?:\/\/hangouts\.google\.com\/([a-z-]+)/i
+        /https?:\/\/meet\.google\.com\/[a-z-]+(?:\?[^\s]*)?/i,
+        /https?:\/\/hangouts\.google\.com\/[a-z-]+(?:\?[^\s]*)?/i
       ],
       icon: '🟢'
     },
     {
       name: 'Microsoft Teams',
       patterns: [
-        /https?:\/\/teams\.microsoft\.com\/l\/meetup-join\/([^\/\s]+)/i,
-        /https?:\/\/teams\.live\.com\/meet\/([^\/\s]+)/i
+        /https?:\/\/teams\.microsoft\.com\/l\/meetup-join\/[^\/\s]+(?:\?[^\s]*)?/i,
+        /https?:\/\/teams\.live\.com\/meet\/[^\/\s]+(?:\?[^\s]*)?/i
       ],
       icon: '🔷'
     },
     {
       name: 'Webex',
       patterns: [
-        /https?:\/\/(?:www\.)?webex\.com\/meet\/([^\/\s]+)/i,
-        /https?:\/\/(?:www\.)?webex\.com\/webex\/([^\/\s]+)/i
+        /https?:\/\/(?:www\.)?webex\.com\/meet\/[^\/\s]+(?:\?[^\s]*)?/i,
+        /https?:\/\/(?:www\.)?webex\.com\/webex\/[^\/\s]+(?:\?[^\s]*)?/i
       ],
       icon: '🟠'
     },
     {
       name: 'Discord',
       patterns: [
-        /https?:\/\/discord\.gg\/([^\/\s]+)/i,
-        /https?:\/\/discord\.com\/invite\/([^\/\s]+)/i
+        /https?:\/\/discord\.gg\/[^\/\s]+(?:\?[^\s]*)?/i,
+        /https?:\/\/discord\.com\/invite\/[^\/\s]+(?:\?[^\s]*)?/i
       ],
       icon: '🟣'
     },
     {
       name: 'Slack',
       patterns: [
-        /https?:\/\/[^\/]+\.slack\.com\/archives\/([^\/\s]+)/i
+        /https?:\/\/[^\/]+\.slack\.com\/archives\/[^\/\s]+(?:\?[^\s]*)?/i
       ],
       icon: '🟡'
     },
     {
       name: 'Skype',
       patterns: [
-        /https?:\/\/join\.skype\.com\/([^\/\s]+)/i,
-        /skype:([^\/\s]+)\?chat/i
+        /https?:\/\/join\.skype\.com\/[^\/\s]+(?:\?[^\s]*)?/i,
+        /skype:[^\/\s]+\?chat/i
       ],
       icon: '🔵'
     },
     {
       name: 'BlueJeans',
       patterns: [
-        /https?:\/\/(?:www\.)?bluejeans\.com\/([^\/\s]+)/i
+        /https?:\/\/(?:www\.)?bluejeans\.com\/[^\/\s]+(?:\?[^\s]*)?/i
       ],
       icon: '🔵'
     },
     {
       name: 'GoToMeeting',
       patterns: [
-        /https?:\/\/global\.gotomeeting\.com\/join\/([^\/\s]+)/i
+        /https?:\/\/global\.gotomeeting\.com\/join\/[^\/\s]+(?:\?[^\s]*)?/i
       ],
       icon: '🟢'
-    },
-    {
-      name: 'Generic Meeting',
-      patterns: [
-        /https?:\/\/[^\/\s]+/i
-      ],
-      icon: '📹'
     }
   ];
   
+  // Try specific platform patterns first
   for (const platform of patterns) {
     for (const pattern of platform.patterns) {
       const match = location.match(pattern);
       if (match) {
+        console.log(`Found ${platform.name} meeting URL:`, match[0]);
         return {
           url: match[0],
           platform: platform.name,
@@ -430,6 +432,19 @@ function extractMeetingUrl(location) {
     }
   }
   
+  // If no specific platform found, check for any meeting-like URL
+  const genericMeetingPattern = /https?:\/\/(?:meet|zoom|teams|webex|bluejeans|gotomeeting|hangouts|discord|slack|skype)\.[^\/\s]+[^\s]*/i;
+  const genericMatch = location.match(genericMeetingPattern);
+  if (genericMatch) {
+    console.log('Found generic meeting URL:', genericMatch[0]);
+    return {
+      url: genericMatch[0],
+      platform: 'Meeting',
+      icon: '📹'
+    };
+  }
+  
+  console.log('No meeting URL found in location');
   return null;
 }
 
