@@ -2,6 +2,8 @@
 class TabDrawer {
   constructor() {
     this.drawer = null;
+    this.shadow = null;
+    this.host = null;
     this.isResizing = false;
     this.startX = 0;
     this.startWidth = 0;
@@ -28,41 +30,265 @@ class TabDrawer {
       return;
     }
     
-    // Create and inject the drawer
-    this.createDrawer();
-    this.loadTabs();
-    this.loadCalendar();
-    this.loadBookmarks();
-    this.setupEventListeners();
-    
-    // Listen for tab updates from background
-    this.messageListener = (request, sender, sendResponse) => {
-      if (request.action === 'tabsUpdated') {
-        this.updateTabs(request.tabs);
-      }
-    };
-    chrome.runtime.onMessage.addListener(this.messageListener);
-    
-    // Periodic refresh to ensure sync (every 500ms to prevent flickering)
-    this.updateInterval = setInterval(() => {
-      this.loadTabs();
-    }, 250);
-    
-    this.initialized = true;
-  }
+    // Create and inject the shadow host
+    this.host = document.createElement('div');
+    this.host.id = 'tab-drawer-host';
+    document.body.appendChild(this.host);
+    this.shadow = this.host.attachShadow({ mode: 'open' });
 
-  cleanup() {
-    if (this.messageListener) {
-      chrome.runtime.onMessage.removeListener(this.messageListener);
-    }
-    if (this.updateInterval) {
-      clearInterval(this.updateInterval);
-    }
-    this.initialized = false;
-  }
+    // Inject styles into shadow root
+    const style = document.createElement('style');
+    style.textContent = `
+:host { all: initial; }
 
-  createDrawer() {
-    // Create drawer container
+#tab-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  width: 250px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  z-index: 999999;
+  box-shadow: 2px 0 10px rgba(0,0,0,0.3);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  transition: all 0.3s ease;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.drawer-header {
+  padding: 12px 20px;
+  background: rgba(255,255,255,0.1);
+  border-bottom: 1px solid rgba(255,255,255,0.2);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  backdrop-filter: blur(10px);
+}
+
+.drawer-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: white;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease;
+}
+.close-btn:hover { background: rgba(255,255,255,0.2); }
+
+.calendar-section,
+.bookmarks-section {
+  border-bottom: 1px solid rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.05);
+}
+
+.calendar-header,
+.bookmarks-header {
+  padding: 15px 20px 10px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.calendar-header h4,
+.bookmarks-header h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: white;
+  opacity: 0.9;
+}
+
+.calendar-content,
+.bookmarks-content {
+  padding: 10px;
+  overflow-y: auto;
+}
+
+.loading {
+  text-align: center;
+  padding: 20px;
+  color: rgba(255,255,255,0.8);
+  font-style: italic;
+}
+
+.drawer-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+/* Tab Items */
+.tab-item {
+  background: rgba(255,255,255,0.1);
+  border-radius: 6px;
+  margin: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid rgba(255,255,255,0.1);
+  backdrop-filter: blur(5px);
+}
+.tab-item.dragging { opacity: 0.5; transform: rotate(2deg); }
+.tab-item.drag-over { background: rgba(255,255,255,0.3); border-color: rgba(255,255,255,0.6); transform: scale(1.02); position: relative; }
+.tab-item.drag-over-before::before {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: rgba(255,255,255,0.8);
+  border-radius: 1px;
+  z-index: 10;
+  animation: insertionLine 0.2s ease;
+}
+.tab-item.drag-over-after::after {
+  content: '';
+  position: absolute;
+  bottom: -3px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: rgba(255,255,255,0.8);
+  border-radius: 1px;
+  z-index: 10;
+  animation: insertionLine 0.2s ease;
+}
+@keyframes insertionLine {
+  from { opacity: 0; transform: scaleX(0); }
+  to { opacity: 1; transform: scaleX(1); }
+}
+.tab-item:hover { background: rgba(255,255,255,0.2); transform: translateX(5px); }
+.tab-item.active { background: rgba(255,255,255,0.25); border-color: rgba(255,255,255,0.4); box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+.tab-content { padding: 12px; display: flex; align-items: center; gap: 10px; position: relative; }
+.tab-favicon { width: 16px; height: 16px; border-radius: 2px; flex-shrink: 0; background: rgba(255,255,255,0.2); }
+.tab-info { flex: 1; min-width: 0; overflow: hidden; }
+.tab-title { font-size: 14px; font-weight: 500; color: white; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tab-url { font-size: 11px; color: rgba(255,255,255,0.7); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tab-close { background: rgba(255,255,255,0.2); border: none; color: white; width: 20px; height: 20px; border-radius: 50%; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; opacity: 0; flex-shrink: 0; }
+.tab-item:hover .tab-close { opacity: 1; }
+.tab-close:hover { background: rgba(255,0,0,0.8); transform: scale(1.1); }
+.tab-refresh { background: rgba(255,255,255,0.2); border: none; color: white; width: 20px; height: 20px; border-radius: 50%; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; opacity: 0; flex-shrink: 0; margin-right: 5px; }
+.tab-item:hover .tab-refresh { opacity: 1; }
+.tab-refresh:hover { background: rgba(0,255,0,0.8); transform: scale(1.1); }
+
+/* Meeting Items */
+.meeting-item {
+  background: rgba(255,255,255,0.1);
+  border-radius: 6px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid rgba(255,255,255,0.1);
+  backdrop-filter: blur(5px);
+}
+.meeting-item:hover { background: rgba(255,255,255,0.2); transform: translateX(3px); }
+.meeting-content { padding: 10px; display: flex; align-items: center; gap: 10px; }
+.meeting-time { font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.9); min-width: 50px; text-align: center; background: rgba(255,255,255,0.2); padding: 4px 6px; border-radius: 4px; }
+.meeting-info { flex: 1; min-width: 0; overflow: hidden; }
+.meeting-title { font-size: 13px; font-weight: 500; color: white; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.meeting-duration { font-size: 11px; color: rgba(255,255,255,0.7); }
+.meeting-platform { font-size: 18px; cursor: pointer; padding: 4px; border-radius: 4px; transition: all 0.2s ease; background: rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center; min-width: 26px; height: 26px; flex-shrink: 0; }
+.meeting-platform:hover { background: rgba(255,255,255,0.3); transform: scale(1.1); box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+.meeting-platform[title*="Zoom"]:hover { background: rgba(0,122,255,0.3); }
+.meeting-platform[title*="Google Meet"]:hover { background: rgba(0,150,136,0.3); }
+.meeting-platform[title*="Microsoft Teams"]:hover { background: rgba(0,120,215,0.3); }
+.meeting-platform[title*="Webex"]:hover { background: rgba(255,102,0,0.3); }
+.meeting-platform[title*="Discord"]:hover { background: rgba(114,137,218,0.3); }
+.meeting-platform[title*="Slack"]:hover { background: rgba(74,21,75,0.3); }
+.meeting-platform[title*="Skype"]:hover { background: rgba(0,175,240,0.3); }
+.calendar-error { text-align: center; padding: 15px; color: rgba(255,255,255,0.8); }
+.error-message { margin-bottom: 10px; font-size: 12px; }
+.retry-btn { background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: white; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 11px; transition: all 0.2s ease; }
+.retry-btn:hover { background: rgba(255,255,255,0.3); }
+.no-meetings { text-align: center; padding: 20px; color: rgba(255,255,255,0.7); font-style: italic; font-size: 13px; }
+
+/* Bookmarks */
+.bookmark-item {
+  background: rgba(255,255,255,0.1);
+  border-radius: 6px;
+  margin-bottom: 2px;
+  padding: 2px 0;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid rgba(255,255,255,0.1);
+  backdrop-filter: blur(5px);
+}
+.bookmark-item:hover { background: rgba(255,255,255,0.2); transform: translateX(3px); }
+.bookmark-content {
+  padding: 4px 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.bookmark-favicon {
+  width: 16px;
+  height: 16px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.bookmark-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: white;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bookmarks-error { text-align: center; padding: 15px; color: rgba(255,255,255,0.8); }
+.no-bookmarks { text-align: center; padding: 20px; color: rgba(255,255,255,0.7); font-style: italic; font-size: 13px; }
+
+/* Drawer Resizer */
+.drawer-resizer { position: absolute; top: 0; right: 0; width: 4px; height: 100%; cursor: col-resize; background: rgba(255,255,255,0.1); transition: background-color 0.2s ease; }
+.drawer-resizer:hover { background: rgba(255,255,255,0.3); }
+.drawer-resizer::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 2px; height: 40px; background: rgba(255,255,255,0.5); border-radius: 1px; }
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  #tab-drawer { width: 200px; }
+  .drawer-header { padding: 15px; }
+  .drawer-header h3 { font-size: 16px; }
+  .tab-content { padding: 10px; }
+  .tab-title { font-size: 13px; }
+  .tab-url { font-size: 10px; }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes tabUpdate {
+  0% { background: rgba(255,255,255,0.3); }
+  100% { background: rgba(255,255,255,0.1); }
+}
+.tab-item { animation: slideIn 0.3s ease; }
+.tab-item.updating { animation: tabUpdate 0.5s ease; }
+.tab-title, .tab-url, .tab-favicon { transition: all 0.2s ease; }
+.tab-item:focus { outline: 2px solid rgba(255,255,255,0.5); outline-offset: 2px; }
+.close-btn:focus, .tab-close:focus, .tab-refresh:focus { outline: 2px solid rgba(255,255,255,0.5); outline-offset: 2px; }
+
+.bookmarks-content {
+  padding: 10px;
+  /* No max-height, no overflow */
+}
+`;
+    this.shadow.appendChild(style);
+
+    // Create and inject the drawer HTML into shadow root
     this.drawer = document.createElement('div');
     this.drawer.id = 'tab-drawer';
     this.drawer.innerHTML = `
@@ -91,24 +317,50 @@ class TabDrawer {
       </div>
       <div class="drawer-resizer" id="drawer-resizer"></div>
     `;
-    
-    // Ensure body exists and add to page
-    if (document.body) {
-      document.body.appendChild(this.drawer);
-    } else {
-      // Fallback: wait for body to be available
-      const observer = new MutationObserver((mutations, obs) => {
-        if (document.body) {
-          document.body.appendChild(this.drawer);
-          obs.disconnect();
-        }
-      });
-      observer.observe(document.documentElement, { childList: true });
-    }
-    
+    this.shadow.appendChild(this.drawer);
+
     // Set initial width and body margin
     this.drawer.style.width = `${this.defaultWidth}px`;
     document.body.style.marginLeft = `${this.defaultWidth}px`;
+
+    this.loadTabs();
+    this.loadCalendar();
+    this.loadBookmarks();
+    this.setupEventListeners();
+    
+    // Listen for tab updates from background
+    this.messageListener = (request, sender, sendResponse) => {
+      if (request.action === 'tabsUpdated') {
+        this.updateTabs(request.tabs);
+      }
+    };
+    chrome.runtime.onMessage.addListener(this.messageListener);
+    
+    // Periodic refresh to ensure sync (every 500ms to prevent flickering)
+    this.updateInterval = setInterval(() => {
+      this.loadTabs();
+    }, 250);
+    
+    this.initialized = true;
+
+    // Ensure all .dragging classes are removed on dragend, even if drag leaves the shadow root
+    this.shadow.addEventListener('dragend', () => {
+      this.shadow.querySelectorAll('.tab-item.dragging').forEach(el => el.classList.remove('dragging'));
+      this.shadow.querySelectorAll('.tab-item.drag-over').forEach(el => el.classList.remove('drag-over'));
+    });
+  }
+
+  cleanup() {
+    if (this.messageListener) {
+      chrome.runtime.onMessage.removeListener(this.messageListener);
+    }
+    if (this.updateInterval) {
+      clearInterval(this.updateInterval);
+    }
+    // Remove global resize listeners
+    if (this._onWindowMouseMove) window.removeEventListener('mousemove', this._onWindowMouseMove);
+    if (this._onWindowMouseUp) window.removeEventListener('mouseup', this._onWindowMouseUp);
+    this.initialized = false;
   }
 
   async loadTabs() {
@@ -193,7 +445,7 @@ class TabDrawer {
   }
 
   updateTabs(tabs) {
-    const content = document.getElementById('drawer-content');
+    const content = this.shadow.getElementById('drawer-content');
     if (!content) return;
 
     // Build a string representing the current tab order
@@ -209,8 +461,6 @@ class TabDrawer {
       this.lastTabStructure = structure;
     }
   }
-
-
 
   // Helper function to compare arrays
   arraysEqual(a, b) {
@@ -305,7 +555,7 @@ class TabDrawer {
       }
     }
     
-    const content = document.getElementById('calendar-content');
+    const content = this.shadow.getElementById('calendar-content');
     if (!content) {
       console.log('Calendar content element not found');
       return;
@@ -343,7 +593,7 @@ class TabDrawer {
   }
 
   updateBookmarks(bookmarks) {
-    const content = document.getElementById('bookmarks-content');
+    const content = this.shadow.getElementById('bookmarks-content');
     if (!content) return;
 
     if (bookmarks.error) {
@@ -491,26 +741,19 @@ class TabDrawer {
   createBookmarkElement(bookmark) {
     const bookmarkDiv = document.createElement('div');
     bookmarkDiv.className = 'bookmark-item';
-    
     // Get favicon URL
     const faviconUrl = this.getDefaultFavicon(bookmark.url);
-    
     bookmarkDiv.innerHTML = `
       <div class="bookmark-content">
         <img class="bookmark-favicon" src="${faviconUrl}" alt="favicon">
-        <div class="bookmark-info">
-          <div class="bookmark-title" title="${bookmark.title}">${this.truncateTitle(bookmark.title)}</div>
-          <div class="bookmark-url" title="${bookmark.url}">${this.truncateUrl(bookmark.url)}</div>
-        </div>
+        <div class="bookmark-title" title="${bookmark.title}">${this.truncateTitle(bookmark.title)}</div>
       </div>
     `;
-    
     // Add error handler for favicon
     const bookmarkFavicon = bookmarkDiv.querySelector('.bookmark-favicon');
     bookmarkFavicon.addEventListener('error', () => {
       bookmarkFavicon.style.display = 'none';
     });
-    
     // Add click handler to open bookmark in special background tab
     bookmarkDiv.addEventListener('click', () => {
       chrome.runtime.sendMessage({
@@ -519,7 +762,6 @@ class TabDrawer {
         title: bookmark.title
       });
     });
-    
     return bookmarkDiv;
   }
 
@@ -598,14 +840,15 @@ class TabDrawer {
       e.dataTransfer.setData('text/plain', tab.id.toString());
       e.dataTransfer.effectAllowed = 'move';
       tabElement.classList.add('dragging');
+      // Set a transparent drag image to prevent favicon ghost
+      const img = document.createElement('img');
+      img.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>';
+      e.dataTransfer.setDragImage(img, 0, 0);
     });
 
     tabElement.addEventListener('dragend', (e) => {
-      tabElement.classList.remove('dragging');
-      // Remove all drag-over classes when drag ends
-      document.querySelectorAll('.tab-item.drag-over').forEach(el => {
-        el.classList.remove('drag-over');
-      });
+      this.shadow.querySelectorAll('.tab-item.dragging').forEach(el => el.classList.remove('dragging'));
+      this.shadow.querySelectorAll('.tab-item.drag-over').forEach(el => el.classList.remove('drag-over'));
     });
 
     tabElement.addEventListener('dragover', (e) => {
@@ -613,7 +856,7 @@ class TabDrawer {
       e.dataTransfer.dropEffect = 'move';
       
       // Remove drag-over from all other tabs
-      document.querySelectorAll('.tab-item.drag-over').forEach(el => {
+      this.shadow.querySelectorAll('.tab-item.drag-over').forEach(el => {
         if (el !== tabElement) {
           el.classList.remove('drag-over');
         }
@@ -727,11 +970,9 @@ class TabDrawer {
     }
   }
 
-
-
   setupEventListeners() {
     // Close button
-    const closeBtn = document.getElementById('drawer-close');
+    const closeBtn = this.shadow.getElementById('drawer-close');
     if (closeBtn) {
       closeBtn.addEventListener('click', () => {
         this.drawer.classList.toggle('collapsed');
@@ -740,25 +981,26 @@ class TabDrawer {
     }
 
     // Resizer
-    const resizer = document.getElementById('drawer-resizer');
+    const resizer = this.shadow.getElementById('drawer-resizer');
     if (resizer) {
       resizer.addEventListener('mousedown', (e) => {
         this.startResize(e);
       });
     }
 
-    // Global mouse events for resizing
-    document.addEventListener('mousemove', (e) => {
+    // Global mouse events for resizing (window-level for Shadow DOM)
+    this._onWindowMouseMove = (e) => {
       if (this.isResizing) {
         this.resize(e);
       }
-    });
-
-    document.addEventListener('mouseup', () => {
+    };
+    this._onWindowMouseUp = () => {
       if (this.isResizing) {
         this.stopResize();
       }
-    });
+    };
+    window.addEventListener('mousemove', this._onWindowMouseMove);
+    window.addEventListener('mouseup', this._onWindowMouseUp);
   }
 
   startResize(e) {
@@ -782,47 +1024,15 @@ class TabDrawer {
   }
 }
 
-// Multiple initialization strategies to ensure drawer appears on all pages
-function initializeDrawer() {
-  // Check if drawer already exists to prevent duplicates
-  if (document.getElementById('tab-drawer')) {
-    return;
-  }
-  
-  try {
-    new TabDrawer();
-  } catch (error) {
-    console.error('Failed to initialize TabDrawer:', error);
+function waitForBodyAndInitSidebar() {
+  if (document.body) {
+    if (!document.getElementById('tab-drawer-host')) {
+      new TabDrawer();
+    }
+  } else {
+    // Try again soon
+    setTimeout(waitForBodyAndInitSidebar, 20);
   }
 }
 
-// Strategy 1: Immediate initialization if document is ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initializeDrawer);
-} else {
-  initializeDrawer();
-}
-
-// Strategy 2: Fallback for pages that load content dynamically
-document.addEventListener('readystatechange', () => {
-  if (document.readyState === 'complete' && !document.getElementById('tab-drawer')) {
-    setTimeout(initializeDrawer, 100);
-  }
-});
-
-// Strategy 3: Additional fallback for SPA navigation
-let lastUrl = location.href;
-new MutationObserver(() => {
-  const url = location.href;
-  if (url !== lastUrl) {
-    lastUrl = url;
-    setTimeout(initializeDrawer, 100);
-  }
-}).observe(document, { subtree: true, childList: true });
-
-// Strategy 4: Ensure drawer exists after a short delay
-setTimeout(() => {
-  if (!document.getElementById('tab-drawer')) {
-    initializeDrawer();
-  }
-}, 500); 
+waitForBodyAndInitSidebar(); 

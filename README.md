@@ -5,7 +5,7 @@ A powerful Chrome extension that adds a resizable sidebar to your browser with t
 ## Features
 
 ### 🗂️ Tab Management
-- **Real-time tab list** with favicons and titles
+- **Real-time tab list** with favicons and titles, and interaction
 - **Drag-to-reorder tabs** with visual insertion indicators
 - **Tab actions**: switch, close, and refresh tabs
 - **Active tab highlighting**
@@ -14,12 +14,12 @@ A powerful Chrome extension that adds a resizable sidebar to your browser with t
 ### 📅 Google Calendar Integration
 - **Next 2 meetings** display
 - **Meeting details**: time, duration, and attendee count
-- **Click to open** meetings in Google Calendar
+- **Click to open** meetings in Google Calendar, or click to start linked video conferencing. 
 - **OAuth2 authentication** for secure access
 
 ### 🔖 Bookmarks
 - **Sidebar folder integration** - displays bookmarks from "Sidebar" folder
-- **Click to open** bookmarks in new tabs
+- **Click to open** bookmarks in new tabs without cluttering the tab bar
 - **Favicon display** for visual recognition
 
 ### 🎨 User Interface

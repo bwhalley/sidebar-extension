@@ -2,6 +2,8 @@
 class NewTabDrawer {
   constructor() {
     this.drawer = null;
+    this.shadow = null;
+    this.host = null;
     this.isResizing = false;
     this.startX = 0;
     this.startWidth = 0;
@@ -28,8 +30,299 @@ class NewTabDrawer {
       return;
     }
     
-    // Create and inject the drawer
-    this.createDrawer();
+    // Create and inject the shadow host
+    this.host = document.createElement('div');
+    this.host.id = 'tab-drawer-host';
+    document.body.appendChild(this.host);
+    this.shadow = this.host.attachShadow({ mode: 'open' });
+
+    // Inject styles into shadow root
+    const style = document.createElement('style');
+    style.textContent = `
+:host { all: initial; }
+
+#tab-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  width: 250px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  z-index: 999999;
+  box-shadow: 2px 0 10px rgba(0,0,0,0.3);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  transition: all 0.3s ease;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.drawer-header {
+  padding: 12px 20px;
+  background: rgba(255,255,255,0.1);
+  border-bottom: 1px solid rgba(255,255,255,0.2);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  backdrop-filter: blur(10px);
+}
+
+.drawer-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: white;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease;
+}
+.close-btn:hover { background: rgba(255,255,255,0.2); }
+
+.calendar-section,
+.bookmarks-section {
+  border-bottom: 1px solid rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.05);
+}
+
+.calendar-header,
+.bookmarks-header {
+  padding: 15px 20px 10px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.calendar-header h4,
+.bookmarks-header h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: white;
+  opacity: 0.9;
+}
+
+.calendar-content,
+.bookmarks-content {
+  padding: 10px;
+  /* No max-height, no overflow */
+}
+
+.loading {
+  text-align: center;
+  padding: 20px;
+  color: rgba(255,255,255,0.8);
+  font-style: italic;
+}
+
+.drawer-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+/* Tab Items */
+.tab-item {
+  background: rgba(255,255,255,0.1);
+  border-radius: 6px;
+  margin: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid rgba(255,255,255,0.1);
+  backdrop-filter: blur(5px);
+}
+.tab-item.dragging { opacity: 0.5; transform: rotate(2deg); }
+.tab-item.drag-over { background: rgba(255,255,255,0.3); border-color: rgba(255,255,255,0.6); transform: scale(1.02); position: relative; }
+.tab-item.drag-over-before::before {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: rgba(255,255,255,0.8);
+  border-radius: 1px;
+  z-index: 10;
+  animation: insertionLine 0.2s ease;
+}
+.tab-item.drag-over-after::after {
+  content: '';
+  position: absolute;
+  bottom: -3px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: rgba(255,255,255,0.8);
+  border-radius: 1px;
+  z-index: 10;
+  animation: insertionLine 0.2s ease;
+}
+@keyframes insertionLine {
+  from { opacity: 0; transform: scaleX(0); }
+  to { opacity: 1; transform: scaleX(1); }
+}
+.tab-item:hover { background: rgba(255,255,255,0.2); transform: translateX(5px); }
+.tab-item.active { background: rgba(255,255,255,0.25); border-color: rgba(255,255,255,0.4); box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+.tab-content { padding: 12px; display: flex; align-items: center; gap: 10px; position: relative; }
+.tab-favicon { width: 16px; height: 16px; border-radius: 2px; flex-shrink: 0; background: rgba(255,255,255,0.2); }
+.tab-info { flex: 1; min-width: 0; overflow: hidden; }
+.tab-title { font-size: 14px; font-weight: 500; color: white; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tab-url { font-size: 11px; color: rgba(255,255,255,0.7); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tab-close { background: rgba(255,255,255,0.2); border: none; color: white; width: 20px; height: 20px; border-radius: 50%; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; opacity: 0; flex-shrink: 0; }
+.tab-item:hover .tab-close { opacity: 1; }
+.tab-close:hover { background: rgba(255,0,0,0.8); transform: scale(1.1); }
+.tab-refresh { background: rgba(255,255,255,0.2); border: none; color: white; width: 20px; height: 20px; border-radius: 50%; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; opacity: 0; flex-shrink: 0; margin-right: 5px; }
+.tab-item:hover .tab-refresh { opacity: 1; }
+.tab-refresh:hover { background: rgba(0,255,0,0.8); transform: scale(1.1); }
+
+/* Meeting Items */
+.meeting-item {
+  background: rgba(255,255,255,0.1);
+  border-radius: 6px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid rgba(255,255,255,0.1);
+  backdrop-filter: blur(5px);
+}
+.meeting-item:hover { background: rgba(255,255,255,0.2); transform: translateX(3px); }
+.meeting-content { padding: 10px; display: flex; align-items: center; gap: 10px; }
+.meeting-time { font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.9); min-width: 50px; text-align: center; background: rgba(255,255,255,0.2); padding: 4px 6px; border-radius: 4px; }
+.meeting-info { flex: 1; min-width: 0; overflow: hidden; }
+.meeting-title { font-size: 13px; font-weight: 500; color: white; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.meeting-duration { font-size: 11px; color: rgba(255,255,255,0.7); }
+.meeting-platform { font-size: 18px; cursor: pointer; padding: 4px; border-radius: 4px; transition: all 0.2s ease; background: rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center; min-width: 26px; height: 26px; flex-shrink: 0; }
+.meeting-platform:hover { background: rgba(255,255,255,0.3); transform: scale(1.1); box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+.meeting-platform[title*="Zoom"]:hover { background: rgba(0,122,255,0.3); }
+.meeting-platform[title*="Google Meet"]:hover { background: rgba(0,150,136,0.3); }
+.meeting-platform[title*="Microsoft Teams"]:hover { background: rgba(0,120,215,0.3); }
+.meeting-platform[title*="Webex"]:hover { background: rgba(255,102,0,0.3); }
+.meeting-platform[title*="Discord"]:hover { background: rgba(114,137,218,0.3); }
+.meeting-platform[title*="Slack"]:hover { background: rgba(74,21,75,0.3); }
+.meeting-platform[title*="Skype"]:hover { background: rgba(0,175,240,0.3); }
+.calendar-error { text-align: center; padding: 15px; color: rgba(255,255,255,0.8); }
+.error-message { margin-bottom: 10px; font-size: 12px; }
+.retry-btn { background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: white; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 11px; transition: all 0.2s ease; }
+.retry-btn:hover { background: rgba(255,255,255,0.3); }
+.no-meetings { text-align: center; padding: 20px; color: rgba(255,255,255,0.7); font-style: italic; font-size: 13px; }
+
+/* Bookmarks */
+.bookmark-item {
+  background: rgba(255,255,255,0.1);
+  border-radius: 6px;
+  margin-bottom: 2px;
+  padding: 2px 0;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid rgba(255,255,255,0.1);
+  backdrop-filter: blur(5px);
+}
+.bookmark-item:hover { background: rgba(255,255,255,0.2); transform: translateX(3px); }
+.bookmark-content {
+  padding: 4px 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.bookmark-favicon {
+  width: 16px;
+  height: 16px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.bookmark-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: white;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bookmarks-error { text-align: center; padding: 15px; color: rgba(255,255,255,0.8); }
+.no-bookmarks { text-align: center; padding: 20px; color: rgba(255,255,255,0.7); font-style: italic; font-size: 13px; }
+
+/* Drawer Resizer */
+.drawer-resizer { position: absolute; top: 0; right: 0; width: 4px; height: 100%; cursor: col-resize; background: rgba(255,255,255,0.1); transition: background-color 0.2s ease; }
+.drawer-resizer:hover { background: rgba(255,255,255,0.3); }
+.drawer-resizer::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 2px; height: 40px; background: rgba(255,255,255,0.5); border-radius: 1px; }
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  #tab-drawer { width: 200px; }
+  .drawer-header { padding: 15px; }
+  .drawer-header h3 { font-size: 16px; }
+  .tab-content { padding: 10px; }
+  .tab-title { font-size: 13px; }
+  .tab-url { font-size: 10px; }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes tabUpdate {
+  0% { background: rgba(255,255,255,0.3); }
+  100% { background: rgba(255,255,255,0.1); }
+}
+.tab-item { animation: slideIn 0.3s ease; }
+.tab-item.updating { animation: tabUpdate 0.5s ease; }
+.tab-title, .tab-url, .tab-favicon { transition: all 0.2s ease; }
+.tab-item:focus { outline: 2px solid rgba(255,255,255,0.5); outline-offset: 2px; }
+.close-btn:focus, .tab-close:focus, .tab-refresh:focus { outline: 2px solid rgba(255,255,255,0.5); outline-offset: 2px; }
+`;
+    this.shadow.appendChild(style);
+
+    // Create and inject the drawer HTML into shadow root
+    this.drawer = document.createElement('div');
+    this.drawer.id = 'tab-drawer';
+    this.drawer.innerHTML = `
+      <div class="drawer-header">
+        <h3>Sidebar</h3>
+        <button class="close-btn" id="drawer-close">×</button>
+      </div>
+      <div class="calendar-section" id="calendar-section">
+        <div class="calendar-header">
+          <h4>📅 Calendar</h4>
+        </div>
+        <div class="calendar-content" id="calendar-content">
+          <div class="loading">Loading calendar...</div>
+        </div>
+      </div>
+      <div class="bookmarks-section" id="bookmarks-section">
+        <div class="bookmarks-header">
+          <h4>🔖 Bookmarks</h4>
+        </div>
+        <div class="bookmarks-content" id="bookmarks-content">
+          <div class="loading">Loading bookmarks...</div>
+        </div>
+      </div>
+      <div class="drawer-content" id="drawer-content">
+        <div class="loading">Loading tabs...</div>
+      </div>
+      <div class="drawer-resizer" id="drawer-resizer"></div>
+    `;
+    this.shadow.appendChild(this.drawer);
+
+    // Set initial width and body margin
+    this.drawer.style.width = `${this.defaultWidth}px`;
+    document.body.style.marginLeft = `${this.defaultWidth}px`;
+
+    // Add shadow-scoped dragend listener to always remove .dragging
+    this.shadow.addEventListener('dragend', () => {
+      this.shadow.querySelectorAll('.tab-item.dragging').forEach(el => el.classList.remove('dragging'));
+    });
+
     this.loadTabs();
     this.loadCalendar();
     this.loadBookmarks();
@@ -62,46 +355,10 @@ class NewTabDrawer {
     if (this.timeInterval) {
       clearInterval(this.timeInterval);
     }
+    // Remove global resize listeners
+    if (this._onWindowMouseMove) window.removeEventListener('mousemove', this._onWindowMouseMove);
+    if (this._onWindowMouseUp) window.removeEventListener('mouseup', this._onWindowMouseUp);
     this.initialized = false;
-  }
-
-  createDrawer() {
-    // Create drawer container
-    this.drawer = document.createElement('div');
-    this.drawer.id = 'tab-drawer';
-    this.drawer.innerHTML = `
-      <div class="drawer-header">
-        <h3>Sidebar</h3>
-        <button class="close-btn" id="drawer-close">×</button>
-      </div>
-      <div class="calendar-section" id="calendar-section">
-        <div class="calendar-header">
-          <h4>📅 Calendar</h4>
-        </div>
-        <div class="calendar-content" id="calendar-content">
-          <div class="loading">Loading calendar...</div>
-        </div>
-      </div>
-      <div class="bookmarks-section" id="bookmarks-section">
-        <div class="bookmarks-header">
-          <h4>🔖 Bookmarks</h4>
-        </div>
-        <div class="bookmarks-content" id="bookmarks-content">
-          <div class="loading">Loading bookmarks...</div>
-        </div>
-      </div>
-      <div class="drawer-content" id="drawer-content">
-        <div class="loading">Loading tabs...</div>
-      </div>
-      <div class="drawer-resizer" id="drawer-resizer"></div>
-    `;
-    
-    // Add to page
-    document.body.appendChild(this.drawer);
-    
-    // Set initial width and body margin
-    this.drawer.style.width = `${this.defaultWidth}px`;
-    document.body.style.marginLeft = `${this.defaultWidth}px`;
   }
 
   async loadTabs() {
@@ -148,7 +405,7 @@ class NewTabDrawer {
   }
 
   updateTabs(tabs) {
-    const content = document.getElementById('drawer-content');
+    const content = this.shadow.getElementById('drawer-content');
     if (!content) return;
 
     // Build a string representing the current tab order
@@ -164,8 +421,6 @@ class NewTabDrawer {
       this.lastTabStructure = structure;
     }
   }
-
-
 
   // Helper function to compare arrays
   arraysEqual(a, b) {
@@ -240,7 +495,7 @@ class NewTabDrawer {
   }
 
   updateCalendar(meetings) {
-    const content = document.getElementById('calendar-content');
+    const content = this.shadow.getElementById('calendar-content');
     if (!content) return;
 
     if (meetings.error) {
@@ -275,7 +530,7 @@ class NewTabDrawer {
   }
 
   updateBookmarks(bookmarks) {
-    const content = document.getElementById('bookmarks-content');
+    const content = this.shadow.getElementById('bookmarks-content');
     if (!content) return;
 
     if (bookmarks.error) {
@@ -309,7 +564,7 @@ class NewTabDrawer {
     });
   }
 
-    createTabElement(tab) {
+  createTabElement(tab) {
     const tabDiv = document.createElement('div');
     tabDiv.className = `tab-item ${tab.active ? 'active' : ''}`;
     tabDiv.dataset.tabId = tab.id;
@@ -423,26 +678,19 @@ class NewTabDrawer {
   createBookmarkElement(bookmark) {
     const bookmarkDiv = document.createElement('div');
     bookmarkDiv.className = 'bookmark-item';
-    
     // Get favicon URL
     const faviconUrl = this.getDefaultFavicon(bookmark.url);
-    
     bookmarkDiv.innerHTML = `
       <div class="bookmark-content">
         <img class="bookmark-favicon" src="${faviconUrl}" alt="favicon">
-        <div class="bookmark-info">
-          <div class="bookmark-title" title="${bookmark.title}">${this.truncateTitle(bookmark.title)}</div>
-          <div class="bookmark-url" title="${bookmark.url}">${this.truncateUrl(bookmark.url)}</div>
-        </div>
+        <div class="bookmark-title" title="${bookmark.title}">${this.truncateTitle(bookmark.title)}</div>
       </div>
     `;
-    
     // Add error handler for favicon
     const bookmarkFavicon = bookmarkDiv.querySelector('.bookmark-favicon');
     bookmarkFavicon.addEventListener('error', () => {
       bookmarkFavicon.style.display = 'none';
     });
-    
     // Add click handler to open bookmark in special background tab
     bookmarkDiv.addEventListener('click', () => {
       chrome.runtime.sendMessage({
@@ -451,7 +699,6 @@ class NewTabDrawer {
         title: bookmark.title
       });
     });
-    
     return bookmarkDiv;
   }
 
@@ -530,36 +777,29 @@ class NewTabDrawer {
       e.dataTransfer.setData('text/plain', tab.id.toString());
       e.dataTransfer.effectAllowed = 'move';
       tabElement.classList.add('dragging');
+      // Prevent browser drag ghost
+      const img = document.createElement('img');
+      img.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>';
+      e.dataTransfer.setDragImage(img, 0, 0);
     });
 
     tabElement.addEventListener('dragend', (e) => {
-      tabElement.classList.remove('dragging');
-      // Remove all drag-over classes when drag ends
-      document.querySelectorAll('.tab-item.drag-over').forEach(el => {
-        el.classList.remove('drag-over');
-      });
+      this.shadow.querySelectorAll('.tab-item.dragging').forEach(el => el.classList.remove('dragging'));
+      this.shadow.querySelectorAll('.tab-item.drag-over').forEach(el => el.classList.remove('drag-over'));
     });
 
     tabElement.addEventListener('dragover', (e) => {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
-      
-      // Remove drag-over from all other tabs
-      document.querySelectorAll('.tab-item.drag-over').forEach(el => {
+      this.shadow.querySelectorAll('.tab-item.drag-over').forEach(el => {
         if (el !== tabElement) {
           el.classList.remove('drag-over');
         }
       });
-      
-      // Determine insertion position based on mouse position
       const rect = tabElement.getBoundingClientRect();
       const mouseY = e.clientY;
       const tabCenter = rect.top + rect.height / 2;
-      
-      // Remove any existing position classes
       tabElement.classList.remove('drag-over-before', 'drag-over-after');
-      
-      // Add drag-over class and position class
       tabElement.classList.add('drag-over');
       if (mouseY < tabCenter) {
         tabElement.classList.add('drag-over-before');
@@ -569,8 +809,6 @@ class NewTabDrawer {
     });
 
     tabElement.addEventListener('dragleave', (e) => {
-      // Only remove drag-over if we're actually leaving the element
-      // (not just moving to a child element)
       if (!tabElement.contains(e.relatedTarget)) {
         tabElement.classList.remove('drag-over', 'drag-over-before', 'drag-over-after');
       }
@@ -579,24 +817,14 @@ class NewTabDrawer {
     tabElement.addEventListener('drop', async (e) => {
       e.preventDefault();
       tabElement.classList.remove('drag-over', 'drag-over-before', 'drag-over-after');
-      
       const draggedTabId = parseInt(e.dataTransfer.getData('text/plain'));
       const targetTabId = tab.id;
-      
-      console.log(`Drop event: dragged=${draggedTabId}, target=${targetTabId}`);
-      
       if (draggedTabId && targetTabId && draggedTabId !== targetTabId) {
-        // Determine insertion position based on mouse position
         const rect = tabElement.getBoundingClientRect();
         const mouseY = e.clientY;
         const tabCenter = rect.top + rect.height / 2;
         const insertBefore = mouseY < tabCenter;
-        
-        console.log(`Mouse position: ${mouseY}, tab center: ${tabCenter}, insertBefore: ${insertBefore}`);
-        
         await this.handleTabDrop(draggedTabId, targetTabId, insertBefore);
-      } else {
-        console.log('Invalid drop: same tab or missing data');
       }
     });
   }
@@ -659,11 +887,9 @@ class NewTabDrawer {
     }
   }
 
-
-
   setupEventListeners() {
     // Close button
-    const closeBtn = document.getElementById('drawer-close');
+    const closeBtn = this.shadow.getElementById('drawer-close');
     if (closeBtn) {
       closeBtn.addEventListener('click', () => {
         this.drawer.classList.toggle('collapsed');
@@ -672,25 +898,26 @@ class NewTabDrawer {
     }
 
     // Resizer
-    const resizer = document.getElementById('drawer-resizer');
+    const resizer = this.shadow.getElementById('drawer-resizer');
     if (resizer) {
       resizer.addEventListener('mousedown', (e) => {
         this.startResize(e);
       });
     }
 
-    // Global mouse events for resizing
-    document.addEventListener('mousemove', (e) => {
+    // Global mouse events for resizing (window-level for Shadow DOM)
+    this._onWindowMouseMove = (e) => {
       if (this.isResizing) {
         this.resize(e);
       }
-    });
-
-    document.addEventListener('mouseup', () => {
+    };
+    this._onWindowMouseUp = () => {
       if (this.isResizing) {
         this.stopResize();
       }
-    });
+    };
+    window.addEventListener('mousemove', this._onWindowMouseMove);
+    window.addEventListener('mouseup', this._onWindowMouseUp);
   }
 
   startResize(e) {
@@ -717,8 +944,8 @@ class NewTabDrawer {
     // Update time and date
     const updateTime = () => {
       const now = new Date();
-      const timeElement = document.getElementById('time');
-      const dateElement = document.getElementById('date');
+      const timeElement = this.shadow.getElementById('time');
+      const dateElement = this.shadow.getElementById('date');
       
       if (timeElement) {
         timeElement.textContent = now.toLocaleTimeString('en-US', { 
@@ -743,7 +970,7 @@ class NewTabDrawer {
     this.timeInterval = setInterval(updateTime, 1000);
     
     // Handle search
-    const searchBox = document.getElementById('searchBox');
+    const searchBox = this.shadow.getElementById('searchBox');
     if (searchBox) {
       searchBox.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
