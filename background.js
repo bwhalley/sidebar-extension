@@ -247,7 +247,8 @@ async function getNextMeetings() {
       `timeMax=${endOfDay.toISOString()}&` +
       `maxResults=10&` + // Get more events to filter from
       `orderBy=startTime&` +
-      `singleEvents=true`;
+      `singleEvents=true&` +
+      `fields=items(id,summary,start,end,attendees,location,htmlLink,conferenceData)`;
 
     const response = await fetch(url, {
       headers: {
@@ -292,8 +293,27 @@ async function getNextMeetings() {
     const processedMeetings = meetings.slice(0, 2).map(meeting => {
       const meetingInfo = { ...meeting };
       
-      // Extract meeting URL from location field
-      if (meeting.location) {
+      // Extract meeting URL from conferenceData field (primary source)
+      if (meeting.conferenceData && meeting.conferenceData.entryPoints) {
+        console.log('Conference data found:', meeting.conferenceData);
+        const videoEntryPoint = meeting.conferenceData.entryPoints.find(entry => 
+          entry.entryPointType === 'video'
+        );
+        
+        if (videoEntryPoint && videoEntryPoint.uri) {
+          console.log('Video entry point found:', videoEntryPoint);
+          const meetingUrl = extractMeetingUrl(videoEntryPoint.uri);
+          if (meetingUrl) {
+            meetingInfo.meetingUrl = meetingUrl.url;
+            meetingInfo.platform = meetingUrl.platform;
+            meetingInfo.platformIcon = meetingUrl.icon;
+            console.log('Meeting URL extracted:', meetingUrl);
+          }
+        }
+      }
+      
+      // Fallback: Extract meeting URL from location field if no conferenceData
+      if (!meetingInfo.meetingUrl && meeting.location) {
         const meetingUrl = extractMeetingUrl(meeting.location);
         if (meetingUrl) {
           meetingInfo.meetingUrl = meetingUrl.url;
