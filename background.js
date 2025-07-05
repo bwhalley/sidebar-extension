@@ -207,11 +207,11 @@ chrome.windows.onFocusChanged.addListener((windowId) => {
 // Google Calendar integration
 let authToken = null;
 
-// Get auth token for Google Calendar
-async function getAuthToken() {
+// Get auth token for Google Calendar, with refresh logic
+async function getAuthToken(interactive = false) {
   try {
     const token = await new Promise((resolve, reject) => {
-      chrome.identity.getAuthToken({ interactive: true }, (token) => {
+      chrome.identity.getAuthToken({ interactive }, (token) => {
         if (chrome.runtime.lastError) {
           reject(chrome.runtime.lastError);
         } else {
@@ -227,120 +227,147 @@ async function getAuthToken() {
   }
 }
 
-// Get next 2 meetings from Google Calendar
+// Helper to remove cached token
+function removeCachedToken(token) {
+  return new Promise((resolve) => {
+    chrome.identity.removeCachedAuthToken({ token }, () => {
+      resolve();
+    });
+  });
+}
+
+// Get next 2 meetings from Google Calendar, with token refresh on 401
 async function getNextMeetings() {
   console.log('getNextMeetings called');
-  try {
-    const token = authToken || await getAuthToken();
+  let token = authToken || await getAuthToken(false); // Try silent first
+  if (!token) {
+    // Try interactive if silent failed
+    token = await getAuthToken(true);
     if (!token) {
       console.log('No auth token available');
       return { error: 'Authentication failed' };
     }
-    console.log('Auth token obtained');
+  }
+  console.log('Auth token obtained');
 
-    const now = new Date();
-    const endOfDay = new Date(now);
-    endOfDay.setHours(23, 59, 59, 999);
+  const now = new Date();
+  const endOfDay = new Date(now);
+  endOfDay.setHours(23, 59, 59, 999);
 
-    const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?` +
-      `timeMin=${now.toISOString()}&` +
-      `timeMax=${endOfDay.toISOString()}&` +
-      `maxResults=10&` + // Get more events to filter from
-      `orderBy=startTime&` +
-      `singleEvents=true&` +
-      `fields=items(id,summary,start,end,attendees,location,htmlLink,conferenceData)`;
+  const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?` +
+    `timeMin=${now.toISOString()}&` +
+    `timeMax=${endOfDay.toISOString()}&` +
+    `maxResults=10&` + // Get more events to filter from
+    `orderBy=startTime&` +
+    `singleEvents=true&` +
+    `fields=items(id,summary,start,end,attendees,location,htmlLink,conferenceData)`;
 
-    const response = await fetch(url, {
+  let response = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  // If unauthorized, remove cached token and retry once
+  if (response.status === 401) {
+    console.warn('Received 401, removing cached token and retrying...');
+    await removeCachedToken(token);
+    token = await getAuthToken(false); // Try silent refresh
+    if (!token) {
+      token = await getAuthToken(true); // Prompt user if needed
+    }
+    if (!token) {
+      return { error: 'Authentication failed after refresh' };
+    }
+    response = await fetch(url, {
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
       }
     });
+  }
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+  if (!response.ok) {
+    return { error: `HTTP error! status: ${response.status}` };
+  }
+
+  const data = await response.json();
+  console.log('Calendar API response:', data);
+  const allEvents = data.items || [];
+  console.log('All events found:', allEvents.length);
+  
+  // Filter events to only show meetings with multiple attendees
+  const meetings = allEvents.filter(event => {
+    // Skip location status events (usually have no attendees or just the user)
+    if (event.attendees && event.attendees.length <= 1) {
+      return false;
     }
-
-    const data = await response.json();
-    console.log('Calendar API response:', data);
-    const allEvents = data.items || [];
-    console.log('All events found:', allEvents.length);
     
-    // Filter events to only show meetings with multiple attendees
-    const meetings = allEvents.filter(event => {
-      // Skip location status events (usually have no attendees or just the user)
-      if (event.attendees && event.attendees.length <= 1) {
-        return false;
-      }
-      
-      // Skip events that are just location status updates
-      if (event.summary && (
-        event.summary.toLowerCase().includes('home') ||
-        event.summary.toLowerCase().includes('office') ||
-        event.summary.toLowerCase().includes('location')
-      )) {
-        return false;
-      }
-      
-      // Skip events without attendees (personal events)
-      if (!event.attendees || event.attendees.length === 0) {
-        return false;
-      }
-      
-      // Only include events with 2 or more attendees (actual meetings)
-      return event.attendees.length >= 2;
-    });
+    // Skip events that are just location status updates
+    if (event.summary && (
+      event.summary.toLowerCase().includes('home') ||
+      event.summary.toLowerCase().includes('office') ||
+      event.summary.toLowerCase().includes('location')
+    )) {
+      return false;
+    }
     
-    console.log('Filtered meetings:', meetings.length);
-    // Process meetings to extract meeting URLs and platform info
-    console.log('Processing meetings for URL extraction...');
-    const processedMeetings = meetings.slice(0, 2).map(meeting => {
-      console.log('Processing meeting:', meeting.summary);
-      const meetingInfo = { ...meeting };
+    // Skip events without attendees (personal events)
+    if (!event.attendees || event.attendees.length === 0) {
+      return false;
+    }
+    
+    // Only include events with 2 or more attendees (actual meetings)
+    return event.attendees.length >= 2;
+  });
+  
+  console.log('Filtered meetings:', meetings.length);
+  // Process meetings to extract meeting URLs and platform info
+  console.log('Processing meetings for URL extraction...');
+  const processedMeetings = meetings.slice(0, 2).map(meeting => {
+    console.log('Processing meeting:', meeting.summary);
+    const meetingInfo = { ...meeting };
+    
+    // Extract meeting URL from conferenceData field (primary source)
+    if (meeting.conferenceData && meeting.conferenceData.entryPoints) {
+      console.log('Conference data found:', meeting.conferenceData);
+      const videoEntryPoint = meeting.conferenceData.entryPoints.find(entry => 
+        entry.entryPointType === 'video'
+      );
       
-      // Extract meeting URL from conferenceData field (primary source)
-      if (meeting.conferenceData && meeting.conferenceData.entryPoints) {
-        console.log('Conference data found:', meeting.conferenceData);
-        const videoEntryPoint = meeting.conferenceData.entryPoints.find(entry => 
-          entry.entryPointType === 'video'
-        );
-        
-        if (videoEntryPoint && videoEntryPoint.uri) {
-          console.log('Video entry point found:', videoEntryPoint);
-          console.log('Video entry point URI:', videoEntryPoint.uri);
-          const meetingUrl = extractMeetingUrl(videoEntryPoint.uri);
-          if (meetingUrl) {
-            meetingInfo.meetingUrl = meetingUrl.url;
-            meetingInfo.platform = meetingUrl.platform;
-            meetingInfo.platformIcon = meetingUrl.icon;
-            console.log('Meeting URL extracted:', meetingUrl);
-            console.log('Final meeting URL to be used:', meetingInfo.meetingUrl);
-          }
-        }
-      }
-      
-      // Fallback: Extract meeting URL from location field if no conferenceData
-      if (!meetingInfo.meetingUrl && meeting.location) {
-        console.log('No conferenceData, trying location field:', meeting.location);
-        const meetingUrl = extractMeetingUrl(meeting.location);
+      if (videoEntryPoint && videoEntryPoint.uri) {
+        console.log('Video entry point found:', videoEntryPoint);
+        console.log('Video entry point URI:', videoEntryPoint.uri);
+        const meetingUrl = extractMeetingUrl(videoEntryPoint.uri);
         if (meetingUrl) {
           meetingInfo.meetingUrl = meetingUrl.url;
           meetingInfo.platform = meetingUrl.platform;
           meetingInfo.platformIcon = meetingUrl.icon;
-          console.log('Meeting URL extracted from location:', meetingUrl);
+          console.log('Meeting URL extracted:', meetingUrl);
           console.log('Final meeting URL to be used:', meetingInfo.meetingUrl);
         }
       }
-      
-      return meetingInfo;
-    });
+    }
     
-    console.log('Final processed meetings:', processedMeetings);
-    return processedMeetings;
-  } catch (error) {
-    console.error('Failed to fetch calendar events:', error);
-    return { error: error.message };
-  }
+    // Fallback: Extract meeting URL from location field if no conferenceData
+    if (!meetingInfo.meetingUrl && meeting.location) {
+      console.log('No conferenceData, trying location field:', meeting.location);
+      const meetingUrl = extractMeetingUrl(meeting.location);
+      if (meetingUrl) {
+        meetingInfo.meetingUrl = meetingUrl.url;
+        meetingInfo.platform = meetingUrl.platform;
+        meetingInfo.platformIcon = meetingUrl.icon;
+        console.log('Meeting URL extracted from location:', meetingUrl);
+        console.log('Final meeting URL to be used:', meetingInfo.meetingUrl);
+      }
+    }
+    
+    return meetingInfo;
+  });
+  
+  console.log('Final processed meetings:', processedMeetings);
+  return processedMeetings;
 }
 
 // Extract meeting URL and platform info from location field
