@@ -1,5 +1,6 @@
 {
   "manifest_version": 3,
+  "key": "obodokhpkmikgifnojhpejpfkcdcoeof",
   "name": "Tab Drawer",
   "version": "1.0",
   "description": "A resizable tab drawer that shows all browser tabs on the left side",
@@ -29,7 +30,7 @@
     }
   ],
   "oauth2": {
-    "client_id": "1029697602090-2nmos3cmqudloasjpajjefr8id1fefl2.apps.googleusercontent.com",
+    "client_id": "1029697602090-dcn8dd7cpku4kc7ftb608j8kd0iaouo8.apps.googleusercontent.com",
     "scopes": [
       "https://www.googleapis.com/auth/calendar.readonly"
     ]

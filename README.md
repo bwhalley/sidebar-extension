@@ -1,5 +1,11 @@
 # Sidebar - Chrome Extension
 
+![Sidebar on Google Calendar](images/sidebar-google.png)
+*Sidebar extension shown on a Google Calendar page*
+
+![Sidebar on New Tab Page](images/sidebar-newtab.png)
+*Sidebar extension shown on the custom new tab page*
+
 A powerful Chrome extension that adds a resizable sidebar to your browser with tab management, Google Calendar integration, and bookmark access.
 
 ## Features
